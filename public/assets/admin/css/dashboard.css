@@ -1,0 +1,79 @@
+ .gap-2 { gap:.5rem; }
+
+  /* ====== TOPIK (tetap) ====== */
+  .stat-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:16px;
+  }
+  .stat-card{
+    border-radius:14px;
+    padding:16px 16px 56px;
+    min-height:150px;
+    position:relative;
+    box-shadow:0 6px 20px rgba(0,0,0,.06);
+    border:1px solid transparent;
+    transition:transform .08s ease-in-out, box-shadow .08s ease-in-out;
+  }
+  .stat-card:hover{ transform:translateY(-2px); box-shadow:0 10px 24px rgba(0,0,0,.08); }
+  .stat-card .count{ font-size:40px; font-weight:800; line-height:1; }
+  .stat-card .title{ text-transform:uppercase; letter-spacing:.3px; font-weight:600; opacity:.9; margin-top:6px; }
+  .more-strip{
+    position:absolute; left:0; right:0; bottom:0;
+    height:42px; padding:0 16px;
+    display:flex; align-items:center; justify-content:space-between;
+    border-bottom-left-radius:14px; border-bottom-right-radius:14px;
+    text-decoration:none; font-weight:700;
+    background:rgba(255,255,255,.92); color:#111;
+    border-top:1px solid rgba(0,0,0,.06);
+  }
+  .more-strip .icon{
+    width:24px; height:24px; border-radius:999px;
+    border:2px solid currentColor;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:14px; line-height:1;
+  }
+
+  /* ====== KPI (tanpa tabel, meniru gambar #2) ====== */
+  .kpi-title{ text-align:center; margin:8px 0 24px; font-weight:700; }
+  .kpi-grid{
+    display:grid; gap:24px;
+    grid-template-columns:repeat(auto-fit, minmax(520px, 1fr));
+  }
+  .kpi-panel{ background:#fff; border:1px solid #dcdcdc; border-radius:4px; box-shadow:0 1px 2px rgba(0,0,0,.02); }
+  .kpi-panel h2{ margin:0 0 10px; font-weight:700; }
+  .kpi-head, .kpi-row{
+    display:grid; grid-template-columns: 80px 1fr 180px;
+    align-items:center;
+  }
+  .kpi-head{
+    background:#f1f1f1;
+    border-bottom:1px solid #e6e6e6;
+    padding:10px 12px;
+    font-weight:700;
+    border-top-left-radius:4px; border-top-right-radius:4px;
+  }
+  .kpi-list{ /* body */
+    background:#fff;
+  }
+  .kpi-row{
+    padding:9px 12px;
+    border-bottom:1px solid #efefef;
+    font-size:14px;
+  }
+  .kpi-row:last-child{ border-bottom:none; }
+
+  /* Full-row highlight Top-3 (warna mirip screenshot) */
+  .kpi-row.rank-1{ background:#FFD400 !important; font-weight:700; }
+  .kpi-row.rank-2{ background:#C0C0C0 !important; font-weight:600; }
+  .kpi-row.rank-3{ background:#CD7F32 !important; color:#fff !important; font-weight:600; }
+  .kpi-row.rank-3 > div{ color:#fff !important; }
+
+  /* Kolom */
+  .kpi-col-rank{ text-align:left; font-weight:700; }
+  .kpi-col-name{ text-transform:uppercase; }
+  .kpi-col-val{ text-align:right; font-weight:600; }
+  .nama-staff{ min-width:220px; }
+
+  /* Rapikan wrapper card bawaan */
+  .card.table-responsive{ border:none; }

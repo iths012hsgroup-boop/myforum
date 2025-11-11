@@ -1,0 +1,250 @@
+@extends('layouts.app')
+@section('title', 'Report Absensi')
+
+@push('styles')
+    <style>
+        .table-hover > tbody > tr:hover {
+            background-color: #fffac2 !important;
+        }
+
+        /* DataTables lebih rapi */
+        .dataTables_wrapper .row {
+            margin-bottom: 15px;
+        }
+    </style>
+@endpush
+
+@section('breadcrumb')
+    <ol class="breadcrumb float-sm-right">
+        <li class="breadcrumb-item"><a href="{{ route('hrdmanagement.grafik') }}">Kembali</a></li>
+        <li class="breadcrumb-item active">Report Absensi</li>
+    </ol>
+@endsection
+
+@section('content')
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Report Absensi</h3>
+        </div>
+        <div class="card-body">
+
+            {{-- Form Filter + Generate + Export --}}
+            <form id="form-generate" class="form-inline justify-content-end mb-3" onsubmit="return false;">
+                <input
+                    type="number"
+                    class="form-control form-control-sm mr-2"
+                    id="gen_tahun"
+                    placeholder="Tahun"
+                    value="{{ date('Y') }}"
+                >
+
+                <select id="gen_periode_ke" class="form-control form-control-sm mr-2">
+                    <option value="">Semua Periode</option>
+                    <option value="1">Periode 1 (Jan–Jun)</option>
+                    <option value="2">Periode 2 (Jul–Des)</option>
+                </select>
+
+                {{-- PILIH SITUS --}}
+                <select id="gen_situs" class="form-control form-control-sm mr-2">
+                    <option value="">Semua Situs</option>
+                    @foreach ($sites as $situs)
+                        <option value="{{ $situs->id }}">{{ $situs->nama_situs }}</option>
+                    @endforeach
+                </select>
+
+                <button type="button" id="btn-generate" class="btn btn-sm btn-primary">
+                    Generate Report Semua
+                </button>
+                <button type="button" id="btn-export" class="btn btn-sm btn-success ml-2">
+                    Export Excel
+                </button>
+            </form>
+
+            <table id="absensiTable" class="table table-bordered table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>ID Admin</th>
+                        <th>Nama Staff</th>
+                        <th>Nama Situs</th>
+                        <th>Periode</th>
+                        <th>Sakit</th>
+                        <th>Izin</th>
+                        <th>Telat</th>
+                        <th>Tanpa Kabar</th>
+                        <th>Cuti</th>
+                        <th>Total Absensi</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+<script>
+$(function () {
+    // ================== ROUTES ==================
+    const routes = {
+        data    : '{{ route('hrdmanagement.reportingabsensi.data') }}',
+        generate: '{{ route('hrdmanagement.reportingabsensi.generate') }}',
+        export  : '{{ route('hrdmanagement.reportingabsensi.export') }}',
+    };
+
+    const $tahun      = $('#gen_tahun');
+    const $periodeKe  = $('#gen_periode_ke');
+    const $situs      = $('#gen_situs');
+    const $btnGenerate= $('#btn-generate');
+    const $btnExport  = $('#btn-export');
+
+    // ================== DATATABLE ==================
+    const table = $('#absensiTable').DataTable({
+        processing: true,
+        serverSide: false,
+        ajax: {
+            url: routes.data,
+            data: function (d) {
+                const tahun     = $tahun.val();
+                const periodeKe = $periodeKe.val();
+                const idSitus   = $situs.val();
+
+                d.id_situs = idSitus || '';
+                d.tahun    = tahun   || '';
+
+                // jika pilih periode 1/2 → kirim periode "YYYY-1"/"YYYY-2"
+                if (tahun && periodeKe) {
+                    d.periode = `${tahun}-${periodeKe}`;
+                }
+                // kalau periode kosong → backend pakai tahun saja (semua periode)
+            }
+        },
+        columns: [
+            {
+                data: null,
+                orderable: false,
+                searchable: false,
+                render: (data, type, row, meta) => meta.row + 1,
+            },
+            { data: 'id_admin',      name: 'id_admin' },
+            { data: 'nama_staff',    name: 'nama_staff' },
+            { data: 'nama_situs',    name: 'nama_situs' },
+            { data: 'periode',       name: 'periode' },
+            { data: 'sakit',         name: 'sakit' },
+            { data: 'izin',          name: 'izin' },
+            { data: 'telat',         name: 'telat' },
+            { data: 'tanpa_kabar',   name: 'tanpa_kabar' },
+            { data: 'cuti',          name: 'cuti' },
+            { data: 'total_absensi', name: 'total_absensi' },
+        ],
+        responsive: true,
+        paging: true,
+        lengthChange: true,
+        searching: true,
+        ordering: true,
+        info: true,
+        autoWidth: false,
+        language: {
+            lengthMenu  : 'Tampilkan _MENU_ data per halaman',
+            zeroRecords : 'Tidak ada data yang ditemukan',
+            info        : 'Menampilkan halaman _PAGE_ dari _PAGES_',
+            infoEmpty   : 'Tidak ada data',
+            infoFiltered: '(difilter dari total _MAX_ data)',
+            search      : 'Cari:',
+            paginate    : {
+                first   : 'Awal',
+                last    : 'Akhir',
+                next    : 'Berikutnya',
+                previous: 'Sebelumnya',
+            },
+        },
+    });
+
+    // reload otomatis kalau filter berubah
+    $tahun.add($periodeKe).add($situs).on('change', function () {
+        table.ajax.reload();
+    });
+
+    // ================== GENERATE REPORT ==================
+    function callGenerate(periodeStr, callback) {
+        $.ajax({
+            url   : routes.generate,
+            method: 'POST',
+            data  : {
+                _token : '{{ csrf_token() }}',
+                periode: periodeStr,
+            },
+            success(res) {
+                console.log('GENERATE', periodeStr, res);
+                if (typeof callback === 'function') callback(res);
+            },
+            error(xhr) {
+                console.error('SERVER ERROR:', xhr.responseText);
+                alert('Terjadi kesalahan di server untuk periode ' + periodeStr);
+            }
+        });
+    }
+
+    $btnGenerate.on('click', function () {
+        const tahun     = $tahun.val();
+        const periodeKe = $periodeKe.val(); // '' / '1' / '2'
+
+        if (!tahun) {
+            alert('Tahun wajib diisi.');
+            return;
+        }
+
+        // semua periode → generate 1 & 2
+        if (!periodeKe) {
+            const periode1 = `${tahun}-1`;
+            const periode2 = `${tahun}-2`;
+
+            callGenerate(periode1, function () {
+                callGenerate(periode2, function () {
+                    alert('Generate report periode 1 dan 2 selesai.');
+                    table.ajax.reload();
+                });
+            });
+            return;
+        }
+
+        // hanya satu periode
+        const periode = `${tahun}-${periodeKe}`;
+
+        callGenerate(periode, function (res) {
+            if (res && res.success) {
+                alert((res.message || 'Generate selesai.') + ' Total baris: ' + res.total);
+            } else {
+                alert((res && res.message) || 'Gagal generate report.');
+            }
+            table.ajax.reload();
+        });
+    });
+
+    // ================== EXPORT EXCEL ==================
+    $btnExport.on('click', function () {
+        const tahun     = $tahun.val();
+        const periodeKe = $periodeKe.val(); // bisa kosong
+        const idSitus   = $situs.val();     // bisa kosong
+
+        if (!tahun) {
+            alert('Tahun wajib diisi.');
+            return;
+        }
+
+        const url = new URL(routes.export, window.location.origin);
+        url.searchParams.set('tahun', tahun);
+
+        if (periodeKe) {
+            url.searchParams.set('periode_ke', periodeKe);
+        }
+        if (idSitus) {
+            url.searchParams.set('id_situs', idSitus);
+        }
+
+        window.location.href = url.toString();
+    });
+});
+</script>
+@endpush
