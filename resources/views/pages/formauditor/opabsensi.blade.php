@@ -192,6 +192,24 @@
     </div>
 </div>
 
+{{-- POPUP NOTIFIKASI --}}
+<div class="modal fade" id="notifModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div id="notifModalHeader" class="modal-header bg-success text-white py-2">
+                <h6 class="modal-title mb-0" id="notifModalTitle">Informasi</h6>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body py-3">
+                <p id="notifModalBody" class="mb-0"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 @include('pages.hrdmanagement.new')
 
 
@@ -202,6 +220,7 @@ $(function () {
     const routes = {
         staff : '{{ route('opforum.opabsensi.staff') }}',
         detail: '{{ route('opforum.opabsensi.detail') }}',
+        save  : '{{ route('hrdmanagement.absensi.save') }}', // ⬅ ini
     };
 
     const $staffSection    = $('#staffSection');
@@ -327,33 +346,64 @@ $(function () {
     }
 
     // ================== HELPER: OPEN MODAL ABSENSI BARU ==================
-    function openNewAbsensiModal(idAdmin, namaStaff, idSitus) {
+    function openNewAbsensiModal(idAdmin, namaStaff, idSitusRaw) {
         if ($newForm.length) {
             $newForm[0].reset();
         }
 
-        // reset bagian cuti (id & struktur mengikuti modal new.blade.php)
         $('#newCheckCuti').prop('checked', false);
         $('#cutiDateRangeWrapper').hide();
         $('#cuti_start, #cuti_end').val('');
 
-        // isi info header
+        // JANGAN di-split, kirim apa adanya: "4,34"
+        const allSiteIds = (idSitusRaw || '').toString().trim();
+
         $('#new_modal_id_admin').text(idAdmin);
         $('#new_modal_nama_staff').text(namaStaff);
 
-        // isi hidden form
         $('#new_form_id_admin').val(idAdmin);
         $('#new_form_nama_staff').val(namaStaff);
-        $('#new_form_id_situs').val(idSitus);
+        $('#new_form_id_situs').val(allSiteIds);   // <<< SEKARANG "4,34"
 
-        // default tanggal = hari ini
         const today = new Date().toISOString().slice(0, 10);
         $('#new_form_tanggal').val(today);
 
-        // reset flag duplikat
         $forceCreate.val('0');
 
         $newModal.modal('show');
+    }
+
+    // ================== SUBMIT NEW ABSENSI VIA AJAX (OP ABSENSI) ==================
+    if ($newForm.length) {
+        $newForm.on('submit', function (e) {
+            e.preventDefault(); // cegah reload
+
+            $.ajax({
+                url   : routes.save,
+                method: 'POST',
+                data  : $newForm.serialize(),
+                success(res) {
+                    if (res && res.success) {
+                        showPopup('success', res.message || 'Absensi berhasil disimpan!');
+
+                        $newForm[0].reset();
+                        $forceCreate.val('0');
+                        $('#cutiDateRangeWrapper').hide();
+                        $('#cuti_start, #cuti_end').val('');
+                        $('#newAbsensiModal').modal('hide');
+
+                        // 🔹 paksa tetap di tab OP ABSENSI
+                        $('#hsforumTabs a[href="#cases"]').tab('show');
+                    } else {
+                        showPopup('error', (res && res.message) || 'Gagal menyimpan absensi.');
+                    }
+                },
+                error(xhr) {
+                    console.log(xhr.responseText);
+                    showPopup('error', 'Terjadi kesalahan saat menyimpan absensi.');
+                }
+            });
+        });
     }
 
     // ================== HELPER: LOAD DETAIL ABSENSI PER SITUS ==================
@@ -423,6 +473,25 @@ $(function () {
     });
 
 });
+
+
+    // ================== POPUP NOTIFIKASI ==================
+    function showPopup(type, message) {
+        const $header = $('#notifModalHeader');
+        const $title  = $('#notifModalTitle');
+        const $body   = $('#notifModalBody');
+
+        if (type === 'success') {
+            $header.removeClass('bg-danger').addClass('bg-success');
+            $title.text('Berhasil');
+        } else {
+            $header.removeClass('bg-success').addClass('bg-danger');
+            $title.text('Gagal');
+        }
+
+        $body.text(message || '');
+        $('#notifModal').modal('show');
+    }
 </script>
 @endpush
 

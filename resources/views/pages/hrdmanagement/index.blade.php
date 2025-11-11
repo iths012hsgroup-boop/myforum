@@ -102,6 +102,24 @@
             </div>
         </div>
 
+        {{-- POPUP NOTIFIKASI --}}
+<div class="modal fade" id="notifModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div id="notifModalHeader" class="modal-header bg-success text-white py-2">
+                <h6 class="modal-title mb-0" id="notifModalTitle">Informasi</h6>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body py-3">
+                <p id="notifModalBody" class="mb-0"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+
         {{-- Asumsi Anda memiliki file modal di sini --}}
         @include('pages.hrdmanagement.edit')
         @include('pages.hrdmanagement.new')
@@ -135,50 +153,96 @@ $(document).ready(function () {
     const $cutiEndEdit     = $('#edit_cuti_end');
 
     // ===== CEK DUPLIKAT ABSENSI SAAT SUBMIT NEW =====
-    const $newForm    = $('#newAbsensiForm');
-    const $forceInput = $('#force_create');
+// ===== CEK DUPLIKAT + SUBMIT VIA AJAX (TANPA REFRESH) =====
+const $newForm    = $('#newAbsensiForm');
+const $forceInput = $('#force_create');
 
-    if ($newForm.length) {
-        $newForm.on('submit', function (e) {
-            // kalau sudah pernah konfirmasi, langsung kirim
-            if ($forceInput.val() === '1') return;
+function submitNewAbsensiAjax() {
+    if (!$newForm.length) return;
 
-            e.preventDefault();
+    $.ajax({
+        url   : routes.save,
+        method: 'POST',
+        data  : $newForm.serialize(),
+        success(res) {
+            if (res && res.success) {
+                showPopup('success', res.message || 'Absensi berhasil disimpan!');
 
-            const idAdmin   = $('#new_form_id_admin').val();
-            const namaStaff = $('#new_form_nama_staff').val();
-            const tanggal   = $('#new_form_tanggal').val();
+                // reset form & flag
+                $newForm[0].reset();
+                $forceInput.val('0');
 
-            if (!idAdmin || !tanggal) {
-                this.submit();
-                return;
+                // sembunyikan range cuti kalau ada
+                $('#cutiDateRangeWrapper').hide();
+                $('#cuti_start, #cuti_end').val('');
+
+                // tutup modal
+                $('#newAbsensiModal').modal('hide');
+
+                // kalau mau, refresh DataTable:
+                // staffTable.ajax.reload(null, false);
+            } else {
+                showPopup('error', (res && res.message) || 'Gagal menyimpan absensi.');
             }
+        },
+        error(xhr) {
+            if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                let msgs = [];
+                Object.values(xhr.responseJSON.errors).forEach(arr => { msgs = msgs.concat(arr); });
+                showPopup('error', 'Validasi gagal: ' + msgs.join(' | '));
+            } else {
+                showPopup('error', 'Terjadi kesalahan di server saat menyimpan absensi.');
+            }
+        }
+    });
+}
 
-            $.getJSON(routes.checkDup, { id_admin: idAdmin, tanggal: tanggal })
-                .done(function (res) {
-                    if (res && res.exists) {
-                        const msg =
-                            `Data absensi untuk:\n` +
-                            `ID Admin : ${idAdmin}\n` +
-                            `Nama     : ${namaStaff}\n` +
-                            `Tanggal  : ${tanggal}\n\n` +
-                            `SUDAH ADA.\n` +
-                            `Tetap tambahkan lagi?`;
+if ($newForm.length) {
+    $newForm.on('submit', function (e) {
+        e.preventDefault(); // JANGAN submit normal (bikin refresh)
 
-                        if (confirm(msg)) {
-                            $forceInput.val('1');
-                            $newForm.off('submit').submit();
-                        }
-                    } else {
-                        $newForm.off('submit').submit();
-                    }
-                })
-                .fail(() => {
-                    // kalau cek gagal, tetap izinkan submit
-                    $newForm.off('submit').submit();
-                });
-        });
-    }
+        const idAdmin   = $('#new_form_id_admin').val();
+        const namaStaff = $('#new_form_nama_staff').val();
+        const tanggal   = $('#new_form_tanggal').val();
+
+        // kalau sudah pernah konfirmasi duplikat → langsung AJAX
+        if ($forceInput.val() === '1') {
+            submitNewAbsensiAjax();
+            return;
+        }
+
+        if (!idAdmin || !tanggal) {
+            // biar server yang validasi, tapi tetap pakai AJAX
+            submitNewAbsensiAjax();
+            return;
+        }
+
+        // cek duplikat dulu
+        $.getJSON(routes.checkDup, { id_admin: idAdmin, tanggal: tanggal })
+            .done(function (res) {
+                if (res && res.exists) {
+                    const msg =
+                        `Data absensi untuk:\n` +
+                        `ID Admin : ${idAdmin}\n` +
+                        `Nama     : ${namaStaff}\n` +
+                        `Tanggal  : ${tanggal}\n\n` +
+                        `SUDAH ADA.\n` +
+                        `Tetap tambahkan lagi?`;
+
+                    if (confirm(msg)) {
+                        $forceInput.val('1');   // tandai sudah konfirmasi
+                        submitNewAbsensiAjax();
+                    } // kalau batal → tidak lakukan apa-apa
+                } else {
+                    submitNewAbsensiAjax();
+                }
+            })
+            .fail(function () {
+                // kalau cek duplikat error, tetap izinkan simpan
+                submitNewAbsensiAjax();
+            });
+    });
+}
 
     // ================== HELPER ==================
     function hideCutiRange($wrapper, $start, $end) {
@@ -271,7 +335,7 @@ $(document).ready(function () {
                         class="btn btn-primary btn-sm absensi-baru-btn"
                         data-id-admin="${row.id_admin}" 
                         data-nama-staff="${row.nama_staff}"
-                        data-id-situs-user="${row.id_situs_first}"
+                        data-id-situs-user="${row.id_situs}"   // <<=== tadinya row.id_situs_first
                         title="Absensi Baru Hari Ini"
                     >
                         <i class="fas fa-plus"></i> Absensi
@@ -282,6 +346,7 @@ $(document).ready(function () {
                         class="btn btn-warning btn-sm edit-absensi-btn" 
                         data-id-admin="${row.id_admin}" 
                         data-nama-staff="${row.nama_staff}"
+                        data-id-situs-user="${row.id_situs}"   // <<=== juga pakai full
                         title="Edit Absensi Hari Ini"
                     >
                         <i class="fas fa-pencil-alt"></i> Edit
@@ -292,7 +357,7 @@ $(document).ready(function () {
                         class="btn btn-info btn-sm detail-absensi-btn" 
                         data-id-admin="${row.id_admin}" 
                         data-nama-staff="${row.nama_staff}"
-                        data-id-situs-user="${row.id_situs_first}"
+                        data-id-situs-user="${row.id_situs}"
                         title="Lihat Riwayat Absensi"
                     >
                         <i class="fas fa-list"></i> Details
@@ -340,7 +405,7 @@ $(document).ready(function () {
         $.ajax({
             url   : routes.detail,
             method: 'GET',
-            data  : { id_admin: idAdmin, id_situs: idSitus },
+            data  : { id_admin: idAdmin }, // id_situs tidak perlu kalau hanya mau ikut dari tbhs_users
             success(res) {
                 $detailTbody.empty();
 
@@ -388,12 +453,11 @@ $(document).ready(function () {
         hideCutiRange($cutiWrapperNew, $cutiStartNew, $cutiEndNew);
         $('#newAbsensiModal input[name="kehadiran[]"]').prop('checked', false);
 
-        const idAdmin      = $(this).data('id-admin');
-        const namaStaff    = $(this).data('nama-staff');
-        const idSitusFirst = $(this).data('id-situs-user');
-        const idSitusValid = parseInt(idSitusFirst, 10);
+        const idAdmin    = $(this).data('id-admin');
+        const namaStaff  = $(this).data('nama-staff');
+        const idSitusAll = $(this).data('id-situs-user'); // "4,34"
 
-        if (isNaN(idSitusValid) || idSitusValid <= 0) {
+        if (!idSitusAll) {
             alert('Gagal: ID Situs tidak valid.');
             return;
         }
@@ -402,7 +466,7 @@ $(document).ready(function () {
         $('#new_modal_nama_staff').text(namaStaff);
         $('#new_form_id_admin').val(idAdmin);
         $('#new_form_nama_staff').val(namaStaff);
-        $('#new_form_id_situs').val(idSitusValid);
+        $('#new_form_id_situs').val(idSitusAll);   // <<=== kirim "4,34"
         $('#new_form_tanggal').val(today);
 
         $('#newAbsensiModal').modal('show');
@@ -415,12 +479,11 @@ $(document).ready(function () {
         const button        = $(this);
         const idAdmin       = button.data('id-admin');
         const namaStaff     = button.data('nama-staff');
-        const absensiBaruBtn= button.closest('tr').find('.absensi-baru-btn');
-        const idSitusFirst  = absensiBaruBtn.data('id-situs-user');
-        const idSitusValid  = parseInt(idSitusFirst, 10);
+        const absensiBaruBtn = button.closest('tr').find('.absensi-baru-btn');
+        const idSitusFirst   = absensiBaruBtn.data('id-situs-user'); // string
 
-        if (isNaN(idSitusValid) || idSitusValid <= 0) {
-            alert('Gagal: ID Situs tidak valid.');
+        if (!idSitusFirst) {
+            alert('Gagal: ID Situs tidak ditemukan.');
             return;
         }
 
@@ -429,7 +492,7 @@ $(document).ready(function () {
         $.ajax({
             url : routes.list,
             type: 'GET',
-            data: { id_admin: idAdmin, id_situs: idSitusValid },
+            data: { id_admin: idAdmin, id_situs: idSitusFirst },
             success(response) {
                 const tbody = $('#absensiListTable tbody');
                 tbody.empty();
@@ -465,16 +528,16 @@ $(document).ready(function () {
                                         data-remarks="${remarks}"
                                         data-id-admin="${idAdmin}"
                                         data-nama-staff="${namaStaff}"
-                                        data-id-situs="${idSitusValid}"
+                                        data-id-situs="${row.id_situs}"
                                         data-cuti-start="${row.cuti_start}"
                                         data-cuti-end="${row.cuti_end}">
                                         Edit
                                     </button>
                                     <button type="button"
-                                        class="btn btn-danger delete-absensi-btn"
-                                        data-absensi-id="${row.id}">
-                                        Delete
-                                    </button>
+                                    class="btn btn-danger delete-absensi-btn"
+                                    data-absensi-id="${row.id}">
+                                    Delete
+                                </button>
                                 </div>
                             </td>
                         </tr>
@@ -504,6 +567,41 @@ $(document).ready(function () {
         const remarks    = btn.data('remarks') || '';
         const cutiStart  = btn.data('cuti-start') || '';
         const cutiEnd    = btn.data('cuti-end')   || '';
+        const $editForm = $('#editAbsensiForm');
+
+            if ($editForm.length) {
+        $editForm.on('submit', function(e) {
+            e.preventDefault();
+
+            const url = $editForm.attr('action');
+
+            $.ajax({
+                url   : url,
+                method: 'POST',            // ada _method=PUT di form blade
+                data  : $editForm.serialize(),
+                success(res) {
+                    if (res && res.success) {
+                        showPopup('success', res.message || 'Data absensi berhasil diupdate.');
+
+                        $('#editAbsensiModal').modal('hide');
+                        // optional: refresh list di modal listAbsensi kalau mau
+                        // staffTable.ajax.reload(null, false);
+                    } else {
+                        showPopup('error', (res && res.message) || 'Gagal mengupdate data absensi.');
+                    }
+                },
+                error(xhr) {
+                    if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                        let msgs = [];
+                        Object.values(xhr.responseJSON.errors).forEach(arr => { msgs = msgs.concat(arr); });
+                        showPopup('error', 'Validasi gagal: ' + msgs.join(' | '));
+                    } else {
+                        showPopup('error', 'Terjadi kesalahan di server saat mengupdate absensi.');
+                    }
+                }
+            });
+        });
+    }
 
         setEditFormBase(absensiId, { idAdmin, namaStaff, idSitus, tanggal, remarks });
         applyStatusToEditForm(statusStr, cutiStart, cutiEnd, tanggal);
@@ -575,6 +673,29 @@ $(document).ready(function () {
         });
     }
 });
+
+
+    // ================== POPUP NOTIFIKASI BOOTSTRAP ==================
+    function showPopup(type, message) {
+        const $header = $('#notifModalHeader');
+        const $title  = $('#notifModalTitle');
+        const $body   = $('#notifModalBody');
+
+        if (type === 'success') {
+            $header
+                .removeClass('bg-danger')
+                .addClass('bg-success');
+            $title.text('Berhasil');
+        } else {
+            $header
+                .removeClass('bg-success')
+                .addClass('bg-danger');
+            $title.text('Gagal');
+        }
+
+        $body.text(message || '');
+        $('#notifModal').modal('show');
+    }
 </script>
 @endpush
 

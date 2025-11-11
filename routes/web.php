@@ -71,6 +71,8 @@ Route::prefix('hrdmanagement')->as('hrdmanagement.')->controller(HrdManagementCo
     Route::get('grafik/detail-situs', 'grafikDetailSitus')->name('grafik.diagram_detail');
     Route::get('grafik/daily-detail', 'grafikDailyDetail')->name('grafik.daily_detail');
     Route::get('grafik/perbandingan', 'grafikPerbandingan')->name('grafik.perbandingan');
+
+    Route::get('grafik/compare-data', 'grafikCompareData')->name('grafik.compare_data'); // 🔹 baru
 });
 
 

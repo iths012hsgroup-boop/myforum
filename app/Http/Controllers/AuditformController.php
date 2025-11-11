@@ -408,35 +408,56 @@ public function opabsensiStaff(Request $request)
 }
 
 
-    public function opabsensiDetail(Request $request)
-    {
-        $ids = $request->query('id_situs'); // bisa array / string / null
+public function opabsensiDetail(Request $request)
+{
+    $ids = $request->query('id_situs'); // bisa "4,34" / ["4","34"] / null
 
-        if (empty($ids)) {
-            return response()->json([]);
-        }
-
-        if (!is_array($ids)) {
-            $ids = [$ids];
-        }
-
-        $rows = Absensi::from('tbhs_absensi as a')
-            ->leftJoin('tbhs_situs as s', 's.id', '=', 'a.id_situs') // 🔹 join ke situs
-            ->whereIn('a.id_situs', $ids)
-            ->orderByDesc('a.tanggal')
-            ->orderBy('a.id')
-            ->get([
-                'a.id',
-                'a.id_admin',
-                'a.nama_staff',
-                's.nama_situs',
-                'a.tanggal',
-                'a.status',
-                'a.remarks',
-            ]);
-
-        return response()->json($rows);
+    if (empty($ids)) {
+        return response()->json([]);
     }
+
+    // Normalisasi ke array angka
+    if (!is_array($ids)) {
+        // misal: "4,34" → ["4","34"]
+        $ids = explode(',', $ids);
+    }
+    $ids = array_filter(array_map('trim', $ids));
+
+    if (empty($ids)) {
+        return response()->json([]);
+    }
+
+    $rows = Absensi::from('tbhs_absensi as a')
+        ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
+        ->leftJoin('tbhs_situs as s', function ($join) {
+            // s.id dicari di string u.id_situs (misal "4,34")
+            $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
+        })
+        ->whereIn('a.id_situs', $ids) // filter absensi berdasarkan situs yg dipilih di frontend
+        ->groupBy(
+            'a.id',
+            'a.id_admin',
+            'a.nama_staff',
+            'a.tanggal',
+            'a.status',
+            'a.remarks',
+            'u.id_situs'
+        )
+        ->selectRaw('
+            a.id,
+            a.id_admin,
+            a.nama_staff,
+            a.tanggal,
+            a.status,
+            a.remarks,
+            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+        ')
+        ->orderByDesc('a.tanggal')
+        ->orderBy('a.id')
+        ->get();
+
+    return response()->json($rows);
+}
 
 
     public function new(Request $request)
