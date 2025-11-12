@@ -145,16 +145,6 @@
                         </li>
                         @endif
 
-                        {{-- ===== MENU BARU: TOPIK (HSF018) ===== --}}
-                        @if (in_array('HSF018', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('topik.index') }}" class="nav-link">
-                                <i class="nav-icon fas fa-tags"></i>
-                                <p>Topik</p>
-                            </a>
-                        </li>
-                        @endif
-
                         @if (in_array('HSF019', (array) $allowed))
                         <li class="nav-item">
                             <a href="{{ route('hrdmanagement.grafik') }}"
@@ -165,86 +155,136 @@
                         </li>
                         @endif
 
-                        @if (in_array('HSF003', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('daftarsitus.index') }}" class="nav-link">
-                                <i class="nav-icon fas fa-list-alt"></i>
-                                <p>Daftar Situs</p>
-                            </a>
-                        </li>
+                        {{-- REPORTING --}}
+                        @if (in_array('HSF020', (array) $allowed))
+                            <li class="nav-item has-treeview">
+                                <a href="#" class="nav-link">
+                                    <i class="nav-icon fa-solid fa-book"></i>
+                                    <p>
+                                        Reporting
+                                        <i class="right fas fa-angle-left"></i>
+                                    </p>
+                                </a>
+
+                                <ul class="nav nav-treeview">
+                                    {{-- Data Periode Lama (HSF011) --}}
+                                    @if (in_array('HSF011', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('oldperiode.auditorclosedcasesreport') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Data Periode Lama</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Reporting Periode (HSF012) --}}
+                                    @if (in_array('HSF012', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('reporting.index') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Reporting Periode</p>
+                                            </a>
+                                        </li>
+                                    @endif
+                                </ul>
+                            </li>
                         @endif
 
-                        @if (in_array('HSF004', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('daftarjabatan.index') }}" class="nav-link">
-                                <i class="nav-icon fas fa-users-cog"></i>
-                                <p>Daftar Jabatan</p>
-                            </a>
-                        </li>
+                        {{-- CONFIGURE --}}
+                        @if (in_array('HSF021', (array) $allowed))
+                            <li class="nav-item has-treeview">
+                                <a href="#" class="nav-link">
+                                    <i class="nav-icon fa-solid fa-gear"></i>
+                                    <p>
+                                        Configure
+                                        <i class="right fas fa-angle-left"></i>
+                                    </p>
+                                </a>
+
+                                <ul class="nav nav-treeview">
+                                    {{-- Daftar Situs (HSF003) --}}
+                                    @if (in_array('HSF003', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('daftarsitus.index') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Daftar Situs</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Daftar Jabatan (HSF004) --}}
+                                    @if (in_array('HSF004', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('daftarjabatan.index') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Daftar Jabatan</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Daftar Staff (HSF005) --}}
+                                    @if (in_array('HSF005', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('daftaruser.index') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Daftar Staff</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Topik (HSF018) --}}
+                                    @if (in_array('HSF018', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('topik.index') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Topik</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Migrasi User (HSF009) --}}
+                                    @if (in_array('HSF009', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('migrasidb.index') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Migrasi User</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Reset Password (HSF010) --}}
+                                    @if (in_array('HSF010', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('resetpassword.resetpwd') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Reset Password</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Setting Pengumuman (HSF006) --}}
+                                    @if (in_array('HSF006', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('setting.index') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Setting Pengumuman</p>
+                                            </a>
+                                        </li>
+                                    @endif
+
+                                    {{-- Settings Periode (HSF013) --}}
+                                    @if (in_array('HSF013', (array) $allowed))
+                                        <li class="nav-item">
+                                            <a href="{{ route('periodessetting.setting') }}" class="nav-link">
+                                                <i class="far fa-circle nav-icon"></i>
+                                                <p>Settings Periode</p>
+                                            </a>
+                                        </li>
+                                    @endif
+                                </ul>
+                            </li>
                         @endif
 
-                        @if (in_array('HSF005', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('daftaruser.index') }}" class="nav-link">
-                                <i class="nav-icon fas fa-users"></i>
-                                <p>Daftar Staff</p>
-                            </a>
-                        </li>
-                        @endif
-
-                        @if (in_array('HSF006', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('setting.index') }}" class="nav-link">
-                                <i class="nav-icon fa-solid fa-rss"></i>
-                                <p>Setting Pengumuman</p>
-                            </a>
-                        </li>
-                        @endif
-
-                        @if (in_array('HSF009', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('migrasidb.index') }}" class="nav-link">
-                                <i class="nav-icon fa-solid fa-arrow-right-arrow-left"></i>
-                                <p>Migrasi User</p>
-                            </a>
-                        </li>
-                        @endif
-
-                        @if (in_array('HSF010', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('resetpassword.resetpwd') }}" class="nav-link">
-                                <i class="nav-icon fa-solid fa-lock-open"></i>
-                                <p>Reset Password</p>
-                            </a>
-                        </li>
-                        @endif
-
-                        @if (in_array('HSF011', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('oldperiode.auditorclosedcasesreport') }}" class="nav-link">
-                                <i class="nav-icon fa-solid fa-book"></i>
-                                <p>Data Periode Lama</p>
-                            </a>
-                        </li>
-                        @endif
-
-                        @if (in_array('HSF012', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('reporting.index') }}" class="nav-link">
-                                <i class="nav-icon fa-solid fa-book-open"></i>
-                                <p>Reporting Periode</p>
-                            </a>
-                        </li>
-                        @endif
-
-                        @if (in_array('HSF013', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('periodessetting.setting') }}" class="nav-link">
-                                <i class="nav-icon fa-solid fa-gear"></i>
-                                <p>Settings Periode</p>
-                            </a>
-                        </li>
-                        @endif
                     </ul>
                 </nav>
                 <!-- /.sidebar-menu -->

@@ -381,7 +381,7 @@ class UserController extends Controller
                     'menu_id' => trim($privileges, " ")
                 ], [
                     'id_admin' => $request->id_admin,
-                    'menu_id' => trim($privileges, " ")
+                    'menu_id' => trim($privileges, " ") 
                 ]);
             }
             return redirect()->route('daftaruser.index')->with('success', 'Data assign menu berhasil disimpan');
