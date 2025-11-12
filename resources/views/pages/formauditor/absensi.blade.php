@@ -52,8 +52,8 @@
 
     .legend-telat       { background-color: #ffc107; } /* T */
     .legend-sakit       { background-color: #007bff; } /* S */
-    .legend-izin        { background-color: #00b894; } /* I */
-    .legend-tanpa-kabar { background-color: #e74c3c; } /* TK */
+    .legend-izin        { background-color: #17a2b8; } /* I */
+    .legend-tanpa-kabar { background-color: #dc3545; } /* TK */
     .legend-cuti        { background-color: #27ae60; } /* C */
     .legend-hadir       { background-color: #ffffff; } /* H */
 </style>
@@ -141,42 +141,42 @@
                                 {{-- LEGEND 2×3 DI KANAN --}}
 <div class="legend-wrapper">
     <div class="d-flex align-items-center">
-        <div class="legend-box bg-white border d-flex justify-content-center align-items-center">
+        <div class="legend-box legend-hadir border d-flex justify-content-center align-items-center">
             H
         </div>
         <span class="legend-text">Hadir</span>
     </div>
 
     <div class="d-flex align-items-center">
-        <div class="legend-box bg-warning border d-flex justify-content-center align-items-center">
+        <div class="legend-box legend-telat border d-flex justify-content-center align-items-center">
             T
         </div>
         <span class="legend-text">Telat</span>
     </div>
 
     <div class="d-flex align-items-center">
-        <div class="legend-box bg-primary text-white border d-flex justify-content-center align-items-center">
+        <div class="legend-box legend-sakit text-white border d-flex justify-content-center align-items-center">
             S
         </div>
         <span class="legend-text">Sakit</span>
     </div>
 
     <div class="d-flex align-items-center">
-        <div class="legend-box bg-success text-white border d-flex justify-content-center align-items-center">
+        <div class="legend-box legend-izin text-white border d-flex justify-content-center align-items-center">
             I
         </div>
         <span class="legend-text">Izin</span>
     </div>
 
     <div class="d-flex align-items-center">
-        <div class="legend-box bg-danger text-white border d-flex justify-content-center align-items-center">
+        <div class="legend-box legend-tanpa-kabar text-white border d-flex justify-content-center align-items-center">
             TK
         </div>
         <span class="legend-text">Tanpa Kabar</span>
     </div>
 
     <div class="d-flex align-items-center">
-        <div class="legend-box bg-success text-white border d-flex justify-content-center align-items-center">
+        <div class="legend-box legend-cuti text-white border d-flex justify-content-center align-items-center">
             C
         </div>
         <span class="legend-text">Cuti</span>
