@@ -344,7 +344,6 @@
                             borderColor: 'rgb(40,167,69)',
                             borderWidth: 1,
                             borderRadius: 10,
-                            hidden: true // 👈 tambahkan ini
                         },
                     ]
                 },
@@ -478,7 +477,6 @@
                             borderColor: 'rgb(40,167,69)',
                             borderWidth: 1,
                             borderRadius: 10,
-                            hidden: true, // 🔹 awalnya nonaktif
                         },
                     ]
                 },
@@ -611,7 +609,6 @@
                             backgroundColor: 'rgb(40,167,69)',
                             borderColor: 'rgb(40,167,69)',
                             borderRadius: 10,
-                            hidden: true
                         },
                     ]
                 },
