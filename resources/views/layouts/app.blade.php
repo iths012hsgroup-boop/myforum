@@ -37,30 +37,63 @@
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
     <div class="wrapper">
-        <!-- Navbar -->
-        <nav class="main-header navbar navbar-expand navbar-white navbar-light">
-            <ul class="navbar-nav">
-                <li class="nav-item">
-                    <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
-                </li>
-                <li class="nav-item d-sm-inline-block">
-                    <a href="javascript:void(0)" class="nav-link">
-                        <b><div class="time"><?= date('d-m-Y H:i:s'); ?></div></b>
+    <!-- Navbar -->
+    <nav class="main-header navbar navbar-expand navbar-white navbar-light">
+        {{-- KIRI: menu, jam, pengumuman --}}
+        <ul class="navbar-nav">
+            <li class="nav-item">
+                <a class="nav-link" data-widget="pushmenu" href="#" role="button">
+                    <i class="fas fa-bars"></i>
+                </a>
+            </li>
+            <li class="nav-item d-sm-inline-block">
+                <a href="javascript:void(0)" class="nav-link">
+                    <b><div class="time"><?= date('d-m-Y H:i:s'); ?></div></b>
+                </a>
+            </li>
+            <li class="nav-item d-sm-inline-block">
+                <a href="javascript:void(0)" class="nav-link">
+                    <b>
+                        <div class="pengumuman">
+                            PENGUMUMAN:
+                            {!! $pengumumanHtml ?? '' !!}
+                        </div>
+                    </b>
+                </a>
+            </li>
+        </ul>
+
+        {{-- KANAN: dropdown user (Ubah Password + Keluar) --}}
+        <ul class="navbar-nav ml-auto">
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button">
+                    <i class="fas fa-user-circle mr-1"></i>
+                    {{ Auth::user()->nama_staff ?? Auth::user()->id_admin }}
+                </a>
+                <div class="dropdown-menu dropdown-menu-right">
+
+                    {{-- Ubah password (pakai hak akses yang sama dengan sidebar) --}}
+                    @if (in_array('HSF007', (array) $allowed))
+                        <a href="{{ route('password.update') }}" class="dropdown-item">
+                            <i class="fas fa-unlock-alt mr-2"></i> Ubah Password
+                        </a>
+                        <div class="dropdown-divider"></div>
+                    @endif
+
+                    {{-- Keluar --}}
+                    <a href="{{ route('logout') }}"
+                    class="dropdown-item"
+                    onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
+                        <i class="fas fa-sign-out-alt mr-2"></i> Keluar
                     </a>
-                </li>
-                <li class="nav-item d-sm-inline-block">
-                    <a href="javascript:void(0)" class="nav-link">
-                        <b>
-                            <div class="pengumuman">
-                                PENGUMUMAN:
-                                {!! $pengumumanHtml ?? '' !!}
-                            </div>
-                        </b>
-                    </a>
-                </li>
-            </ul>
-        </nav>
-        <!-- /.navbar -->
+                    <form id="logout-form" action="{{ route('logout') }}" method="GET" class="d-none">
+                        @csrf
+                    </form>
+                </div>
+            </li>
+        </ul>
+    </nav>
+    <!-- /.navbar -->
 
         <!-- Main Sidebar Container -->
         <aside class="main-sidebar sidebar-dark-primary elevation-4">
@@ -168,15 +201,6 @@
                         </li>
                         @endif
 
-                        @if (in_array('HSF007', (array) $allowed))
-                        <li class="nav-item">
-                            <a href="{{ route('password.update') }}" class="nav-link">
-                                <i class="nav-icon fas fa-unlock-alt"></i>
-                                <p>Ubah Password</p>
-                            </a>
-                        </li>
-                        @endif
-
                         @if (in_array('HSF009', (array) $allowed))
                         <li class="nav-item">
                             <a href="{{ route('migrasidb.index') }}" class="nav-link">
@@ -221,13 +245,6 @@
                             </a>
                         </li>
                         @endif
-
-                        <li class="nav-item">
-                            <a href="{{ route('logout') }}" class="nav-link">
-                                <i class="nav-icon fas fa-sign-out-alt"></i>
-                                <p>Keluar</p>
-                            </a>
-                        </li>
                     </ul>
                 </nav>
                 <!-- /.sidebar-menu -->
@@ -299,7 +316,7 @@
     <script src="{{ asset('assets/admin/js/tempusdominus-bootstrap-4.min.js') }}"></script>
     <script src="{{ asset('assets/admin/js/select2.full.min.js') }}"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/js/toastr.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@9"></script>
+    <script src="{{ asset('assets/admin/js/sweetalert2@9.js') }}"></script>
     <script src="{{ asset('assets/admin/js/chart.umd.min.js') }}"></script>
     <script src="{{ asset('assets/admin/js/choices.min.js') }}"></script>
 
