@@ -155,6 +155,8 @@ Route::prefix('hsforum')->as('hsforum.')->controller(AuditFormController::class)
     Route::post('/save',                  'store')->name('save');
     Route::post('/update',                'update')->name('update');
     Route::delete('/remove',              'destroy')->name('destroy');
+
+    Route::get('/op-absensi/stats', 'opAbsensiStats')->name('opabsensi.stats');
 });
 
 /* =========================

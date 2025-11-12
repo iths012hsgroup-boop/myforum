@@ -380,92 +380,145 @@ class AuditformController extends Controller
         return view('pages.formauditor.opindex', $data);
     }
 
-public function opabsensiStaff(Request $request)
-{
-    $idSitus = $request->query('id_situs');
+    public function opabsensiStaff(Request $request)
+    {
+        $idSitus = $request->query('id_situs');
 
-    if (empty($idSitus)) {
-        return response()->json([]);
+        if (empty($idSitus)) {
+            return response()->json([]);
+        }
+
+        $ids = is_array($idSitus) ? $idSitus : [$idSitus];
+
+        $staff = User::where('status', 1)   // 🔹 HANYA USER AKTIF
+            ->where(function ($q) use ($ids) {
+                foreach ($ids as $sid) {
+                    $sid = trim($sid);
+                    if ($sid === '') continue;
+
+                    $q->orWhereRaw('FIND_IN_SET(?, id_situs)', [$sid]);
+                }
+            })
+            ->select('id_admin', 'nama_staff', 'id_situs')
+            ->orderBy('id_admin', 'asc')
+            ->orderBy('nama_staff', 'asc')
+            ->get();
+
+        return response()->json($staff);
     }
 
-    $ids = is_array($idSitus) ? $idSitus : [$idSitus];
 
-    $staff = User::where('status', 1)   // 🔹 HANYA USER AKTIF
-        ->where(function ($q) use ($ids) {
-            foreach ($ids as $sid) {
-                $sid = trim($sid);
-                if ($sid === '') continue;
+    public function opabsensiDetail(Request $request)
+    {
+        $ids = $request->query('id_situs'); // bisa "4,34" / ["4","34"] / null
 
-                $q->orWhereRaw('FIND_IN_SET(?, id_situs)', [$sid]);
-            }
-        })
-        ->select('id_admin', 'nama_staff', 'id_situs')
-        ->orderBy('id_admin', 'asc')
-        ->orderBy('nama_staff', 'asc')
-        ->get();
+        if (empty($ids)) {
+            return response()->json([]);
+        }
 
-    return response()->json($staff);
-}
+        // Normalisasi ke array
+        if (!is_array($ids)) {
+            // misal: "4,34" → ["4","34"]
+            $ids = explode(',', $ids);
+        }
+        $ids = array_filter(array_map('trim', $ids));
 
+        if (empty($ids)) {
+            return response()->json([]);
+        }
 
-public function opabsensiDetail(Request $request)
-{
-    $ids = $request->query('id_situs'); // bisa "4,34" / ["4","34"] / null
+        $rows = Absensi::from('tbhs_absensi as a')
+            ->leftJoin('tbhs_situs as s', function ($join) {
+                // sekarang pakai a.id_situs (varchar: "4,34")
+                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+            })
+            // filter absensi berdasarkan situs yg dipilih di frontend
+            ->where(function ($q) use ($ids) {
+                foreach ($ids as $id) {
+                    $q->orWhereRaw('FIND_IN_SET(?, a.id_situs) > 0', [$id]);
+                }
+            })
+            ->groupBy(
+                'a.id',
+                'a.id_admin',
+                'a.nama_staff',
+                'a.tanggal',
+                'a.status',
+                'a.remarks',
+                'a.id_situs'   // ⬅ cukup sampai sini
+            )
+            ->selectRaw('
+                a.id,
+                a.id_admin,
+                a.nama_staff,
+                a.tanggal,
+                a.status,
+                a.remarks,
+                GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
+            ')
+            ->orderByDesc('a.tanggal')
+            ->orderBy('a.id')
+            ->get();
 
-    if (empty($ids)) {
-        return response()->json([]);
+        // boleh kembalikan langsung array atau dibungkus data, dua-duanya didukung JS kamu
+        return response()->json($rows);
+        // atau:
+        // return response()->json(['data' => $rows]);
     }
 
-    // Normalisasi ke array
-    if (!is_array($ids)) {
-        // misal: "4,34" → ["4","34"]
-        $ids = explode(',', $ids);
+    public function opAbsensiStats()
+    {
+        $user = auth()->user();
+
+        // id_situs string seperti "3,8,21"
+        $idSitusArray = array_filter(array_map('trim', explode(',', (string) $user->id_situs)));
+        $today        = now()->toDateString();
+
+        $isAllSite = in_array('1', $idSitusArray, true);
+
+        if ($isAllSite) {
+            // ============== ALL SITE ==============
+            // 1) TOTAL SITUS: semua situs di tabel tbhs_situs
+            $totalSites = Daftarsitus::count();
+
+            // 2) TOTAL STAFF AKTIF: semua user aktif, tanpa filter situs
+            $totalStaff = User::where('status', 1)->count();
+
+            // 3) TOTAL ABSENSI HARI INI: semua absensi hari ini (distinct id_admin)
+            $todayAbsensi = Absensi::whereDate('tanggal', $today)
+                ->distinct('id_admin')
+                ->count('id_admin');
+        } else {
+            // ============== HANYA SITUS YANG DIMILIKI USER ==============
+            // 1) TOTAL SITUS: banyaknya id_situs yang dimiliki user
+            $totalSites = count($idSitusArray);
+
+            // 2) TOTAL STAFF AKTIF: yang punya salah satu situs ini
+            $totalStaff = User::where('status', 1)
+                ->where(function ($q) use ($idSitusArray) {
+                    foreach ($idSitusArray as $sid) {
+                        $q->orWhereRaw('FIND_IN_SET(?, id_situs)', [$sid]);
+                    }
+                })
+                ->count();
+
+            // 3) TOTAL ABSENSI HARI INI: hanya di situs-situs ini
+            $todayAbsensi = Absensi::whereDate('tanggal', $today)
+                ->where(function ($q) use ($idSitusArray) {
+                    foreach ($idSitusArray as $sid) {
+                        $q->orWhereRaw('FIND_IN_SET(?, id_situs)', [$sid]);
+                    }
+                })
+                ->distinct('id_admin')
+                ->count('id_admin');
+        }
+
+        return response()->json([
+            'totalSites'   => $totalSites,
+            'totalStaff'   => $totalStaff,
+            'todayAbsensi' => $todayAbsensi, // kalau di view nggak dipakai juga nggak masalah
+        ]);
     }
-    $ids = array_filter(array_map('trim', $ids));
-
-    if (empty($ids)) {
-        return response()->json([]);
-    }
-
-    $rows = Absensi::from('tbhs_absensi as a')
-        ->leftJoin('tbhs_situs as s', function ($join) {
-            // sekarang pakai a.id_situs (varchar: "4,34")
-            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
-        })
-        // filter absensi berdasarkan situs yg dipilih di frontend
-        ->where(function ($q) use ($ids) {
-            foreach ($ids as $id) {
-                $q->orWhereRaw('FIND_IN_SET(?, a.id_situs) > 0', [$id]);
-            }
-        })
-        ->groupBy(
-            'a.id',
-            'a.id_admin',
-            'a.nama_staff',
-            'a.tanggal',
-            'a.status',
-            'a.remarks',
-            'a.id_situs'   // ⬅ cukup sampai sini
-        )
-        ->selectRaw('
-            a.id,
-            a.id_admin,
-            a.nama_staff,
-            a.tanggal,
-            a.status,
-            a.remarks,
-            GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
-        ')
-        ->orderByDesc('a.tanggal')
-        ->orderBy('a.id')
-        ->get();
-
-    // boleh kembalikan langsung array atau dibungkus data, dua-duanya didukung JS kamu
-    return response()->json($rows);
-    // atau:
-    // return response()->json(['data' => $rows]);
-}
-
 
 
     public function new(Request $request)

@@ -89,6 +89,27 @@
     @if ($sites->isEmpty())
         <p class="text-center text-muted">Belum ada data situs.</p>
     @else
+
+{{-- SUMMARY KECIL OP ABSENSI --}}
+<div class="row justify-content-center mb-3">
+    <div class="col-md-4 mb-2">
+        <div class="card shadow-sm border-left-primary">
+            <div class="card-body py-2">
+                <div class="small text-muted">Total Situs</div>
+                <div class="h5 mb-0" id="card-total-sites">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-2">
+        <div class="card shadow-sm border-left-success">
+            <div class="card-body py-2">
+                <div class="small text-muted">Total Staff Aktif</div>
+                <div class="h5 mb-0" id="card-total-staff">-</div>
+            </div>
+        </div>
+    </div>
+</div>
+
         {{-- PILIH SITUS (SELECT) --}}
 <div class="row justify-content-center mb-3">
     <div class="col-lg-8 col-xl-6">
@@ -117,13 +138,29 @@
     </div>
 </div>
 
+<div id="opEmptyState" class="row justify-content-center mt-4">
+    <div class="col-lg-6 text-center text-muted">
+        <i class="fas fa-users fa-3x mb-3"></i>
+        <h5 class="mb-1">Belum ada situs yang dipilih</h5>
+        <p class="mb-2">
+            Pilih satu atau beberapa situs di atas untuk menampilkan daftar staff
+            dan menginput absensi.
+        </p>
+        <ul class="list-unstyled small mb-0">
+            <li>1. Pilih situs pada kotak <strong>"Pilih Situs"</strong></li>
+            <li>2. Daftar staff akan muncul di bawah</li>
+            <li>3. Klik nama staff untuk input absensi</li>
+        </ul>
+    </div>
+</div>
+
 {{-- SECTION STAFF --}}
 <div id="staffSection" style="display:none;">
     <div class="row justify-content-center mb-2">
         <div class="col-lg-8 col-xl-6">
             <div class="card bg-light border-0">
             <div class="card-body py-2" style="background: #17a2b8; border-radius: 10px; height: 60px; 
-            width: 1125px; position: relative; right: 100px;">
+            width: 1010px; position: relative; right: 100px;">
                     <div class="row align-items-center">
                         {{-- kolom search --}}
                         <div class="col-md-7 mb-2 mb-md-0">
@@ -222,6 +259,7 @@ $(function () {
         staff : '{{ route('opforum.opabsensi.staff') }}',
         detail: '{{ route('opforum.opabsensi.detail') }}',
         save  : '{{ route('hrdmanagement.absensi.save') }}',
+        stats : '{{ route('hsforum.opabsensi.stats') }}',
     };
 
     const $staffSection    = $('#staffSection');
@@ -249,6 +287,16 @@ $(function () {
             shouldSort: false,
         });
     }
+
+        $.getJSON(routes.stats)
+        .done(function (res) {
+            $('#card-total-sites').text(res.totalSites ?? '-');
+            $('#card-total-staff').text(res.totalStaff ?? '-');
+        })
+        .fail(function () {
+            $('#card-total-sites').text('-');
+            $('#card-total-staff').text('-');
+        });
 
     // ================== HELPER: RENDER STAFF PILL ==================
     function renderStaffPills(list) {
@@ -323,9 +371,11 @@ $(function () {
             $staffSection.hide();
             $btnDetail.prop('disabled', true);
             $staffContainer.empty();
+            $('#opEmptyState').show();
             return;
         }
 
+        $('#opEmptyState').hide();
         $staffSection.show();
         $btnDetail.prop('disabled', false);
         $searchStaff.val('');
