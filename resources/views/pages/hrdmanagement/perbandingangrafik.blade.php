@@ -7,15 +7,10 @@
             </p>
         </div>
 
-        {{-- DROPDOWN TAHUN (HANYA TAHUN YANG ADA DI tbhs_absensi) --}}
-        <form method="GET" action="{{ route('hrdmanagement.grafik') }}" id="compareYearForm" class="ml-3">
-            {{-- supaya tetap di tab "COMPARE" kalau kamu pakai query ?tab=compare --}}
-            <input type="hidden" name="tab" value="compare">
-
+        <form method="GET" id="compareYearForm" class="ml-3">
             <div class="form-inline">
                 <label for="compare_year" class="mr-2 mb-0">Tahun:</label>
-                <select name="compare_year" id="compare_year"
-                        class="form-control form-control-sm">
+                <select name="compare_year" id="compare_year" class="form-control form-control-sm">
                     @foreach($compareYears ?? [] as $y)
                         <option value="{{ $y }}" {{ ($y == ($compareYear ?? null)) ? 'selected' : '' }}>
                             {{ $y }}
@@ -26,88 +21,96 @@
         </form>
     </div>
 
-    {{-- ================== PERIODE 1 (JAN–JUN) ================== --}}
-    <div class="mb-4">
-        <div class="border p-3">
-            <h6 class="text-center mb-3">Periode 1 (Jan–Jun)</h6>
+    @php
+        $periods = [
+            [
+                'key'   => 1,
+                'title' => 'Periode 1 (Jan–Jun)',
+                'barId' => 'chartCompareP1Bar',
+                'pieId' => 'chartCompareP1Pie',
+            ],
+            [
+                'key'   => 2,
+                'title' => 'Periode 2 (Jul–Des)',
+                'barId' => 'chartCompareP2Bar',
+                'pieId' => 'chartCompareP2Pie',
+            ],
+        ];
+    @endphp
 
-            <div class="row">
-                {{-- Bar chart --}}
-                <div class="col-md-8 mb-3 mb-md-0">
-                    <div style="height: 320px;">
-                        <canvas id="chartCompareP1Bar"></canvas>
+    @foreach($periods as $p)
+        <div class="mb-4">
+            <div class="border p-3">
+                <h6 class="text-center mb-3">{{ $p['title'] }}</h6>
+
+                <div class="row">
+                    <div class="col-md-8 mb-3 mb-md-0">
+                        <div style="height: 320px;">
+                            <canvas id="{{ $p['barId'] }}"></canvas>
+                        </div>
                     </div>
-                </div>
 
-                {{-- Pie chart --}}
-                <div class="col-md-4">
-                    <div style="height: 320px;">
-                        <canvas id="chartCompareP1Pie"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ================== PERIODE 2 (JUL–DES) ================== --}}
-    <div class="mb-2">
-        <div class="border p-3">
-            <h6 class="text-center mb-3">Periode 2 (Jul–Des)</h6>
-
-            <div class="row">
-                {{-- Bar chart --}}
-                <div class="col-md-8 mb-3 mb-md-0">
-                    <div style="height: 320px;">
-                        <canvas id="chartCompareP2Bar"></canvas>
-                    </div>
-                </div>
-
-                {{-- Pie chart --}}
-                <div class="col-md-4">
-                    <div style="height: 320px;">
-                        <canvas id="chartCompareP2Pie"></canvas>
+                    <div class="col-md-4">
+                        <div style="height: 320px;">
+                            <canvas id="{{ $p['pieId'] }}"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+    @endforeach
 </div>
 
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // ================== DATA AWAL DARI CONTROLLER ==================
-    const labelsP1         = @json($cmpLabels1 ?? []);
-    const dataTelatP1      = @json($cmpTelat1 ?? []);
-    const dataSakitP1      = @json($cmpSakit1 ?? []);
-    const dataIzinP1       = @json($cmpIzin1 ?? []);
-    const dataTanpaKabarP1 = @json($cmpTanpa1 ?? []);
-    const dataCutiP1       = @json($cmpCuti1 ?? []);
+    const initial = {
+        p1: {
+            labels        : @json($cmpLabels1         ?? []),
+            telat         : @json($cmpTelat1          ?? []),
+            sakit         : @json($cmpSakit1          ?? []),
+            izin          : @json($cmpIzin1           ?? []),
+            tanpaKabar    : @json($cmpTanpa1          ?? []),
+            cuti          : @json($cmpCuti1           ?? []),
+            situsLabels   : @json($cmpDiagramLabels1  ?? []),
+            situsTotals   : @json($cmpDiagramTotals1  ?? []),
+            situsDetail   : @json($cmpDiagramDetail1  ?? []),
+        },
+        p2: {
+            labels        : @json($cmpLabels2         ?? []),
+            telat         : @json($cmpTelat2          ?? []),
+            sakit         : @json($cmpSakit2          ?? []),
+            izin          : @json($cmpIzin2           ?? []),
+            tanpaKabar    : @json($cmpTanpa2          ?? []),
+            cuti          : @json($cmpCuti2           ?? []),
+            situsLabels   : @json($cmpDiagramLabels2  ?? []),
+            situsTotals   : @json($cmpDiagramTotals2  ?? []),
+            situsDetail   : @json($cmpDiagramDetail2  ?? []),
+        }
+    };
 
-    const situsLabelsP1 = @json($cmpDiagramLabels1 ?? []);
-    const situsTotalsP1 = @json($cmpDiagramTotals1 ?? []);
-    const situsDetailP1 = @json($cmpDiagramDetail1 ?? []);
+    // ================== HELPER: BAR DATASET & OPTIONS ==================
+    const barColors = [
+        'rgb(255,193,7)',   // Telat
+        'rgb(0,123,255)',   // Sakit
+        'rgb(23,162,184)',  // Izin
+        'rgb(220,53,69)',   // Tanpa Kabar
+        'rgb(40,167,69)',   // Cuti
+    ];
+    const barLabels = ['Telat','Sakit','Izin','Tanpa Kabar','Cuti'];
 
-    const labelsP2         = @json($cmpLabels2 ?? []);
-    const dataTelatP2      = @json($cmpTelat2 ?? []);
-    const dataSakitP2      = @json($cmpSakit2 ?? []);
-    const dataIzinP2       = @json($cmpIzin2 ?? []);
-    const dataTanpaKabarP2 = @json($cmpTanpa2 ?? []);
-    const dataCutiP2       = @json($cmpCuti2 ?? []);
-
-    const situsLabelsP2 = @json($cmpDiagramLabels2 ?? []);
-    const situsTotalsP2 = @json($cmpDiagramTotals2 ?? []);
-    const situsDetailP2 = @json($cmpDiagramDetail2 ?? []);
-
-    // ================== HELPER: DATASET BAR ==================
     function buildBarDatasets(telat, sakit, izin, tanpaKabar, cuti) {
-        return [
-            { label:'Telat', data:telat, backgroundColor:'rgb(255,193,7)', borderColor:'rgb(255,193,7)', borderWidth:1, borderRadius:4 },
-            { label:'Sakit', data:sakit, backgroundColor:'rgb(0,123,255)', borderColor:'rgb(0,123,255)', borderWidth:1, borderRadius:4 },
-            { label:'Izin',  data:izin,  backgroundColor:'rgb(23,162,184)', borderColor:'rgb(23,162,184)', borderWidth:1, borderRadius:4 },
-            { label:'Tanpa Kabar', data:tanpaKabar, backgroundColor:'rgb(220,53,69)', borderColor:'rgb(220,53,69)', borderWidth:1, borderRadius:4 },
-            { label:'Cuti',  data:cuti,  backgroundColor:'rgb(40,167,69)', borderColor:'rgb(40,167,69)', borderWidth:1, borderRadius:10 },
-        ];
+        const sources = [telat, sakit, izin, tanpaKabar, cuti];
+
+        return sources.map((dataArr, i) => ({
+            label        : barLabels[i],
+            data         : dataArr,
+            backgroundColor: barColors[i],
+            borderColor  : barColors[i],
+            borderWidth  : 1,
+            borderRadius : i === 4 ? 10 : 4,
+        }));
     }
 
     const barOptions = {
@@ -129,32 +132,44 @@ document.addEventListener('DOMContentLoaded', function () {
         },
     };
 
-    function createBarChart(canvasId, labels, telat, sakit, izin, tanpaKabar, cuti) {
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return null;
-        const ctx = canvas.getContext('2d');
+    function createBarChart(canvasId, cfg) {
+        const el = document.getElementById(canvasId);
+        if (!el) return null;
+        const ctx = el.getContext('2d');
+
         return new Chart(ctx, {
             type: 'bar',
-            data: { labels: labels, datasets: buildBarDatasets(telat, sakit, izin, tanpaKabar, cuti) },
+            data: {
+                labels: cfg.labels,
+                datasets: buildBarDatasets(
+                    cfg.telat,
+                    cfg.sakit,
+                    cfg.izin,
+                    cfg.tanpaKabar,
+                    cfg.cuti
+                ),
+            },
             options: barOptions,
         });
     }
 
-    function updateBarChart(chart, labels, telat, sakit, izin, tanpaKabar, cuti) {
+    function updateBarChart(chart, cfg) {
         if (!chart) return;
-        chart.data.labels               = labels;
-        chart.data.datasets[0].data     = telat;
-        chart.data.datasets[1].data     = sakit;
-        chart.data.datasets[2].data     = izin;
-        chart.data.datasets[3].data     = tanpaKabar;
-        chart.data.datasets[4].data     = cuti;
+        chart.data.labels = cfg.labels;
+
+        const sources = [cfg.telat, cfg.sakit, cfg.izin, cfg.tanpaKabar, cfg.cuti];
+        chart.data.datasets.forEach((ds, i) => {
+            ds.data = sources[i] || [];
+        });
+
         chart.update();
     }
 
     // ================== HELPER: PIE ==================
-    function buildPieColors(labels) {
+    function buildPieColors(count) {
         const bg = [], border = [];
-        const total = labels.length || 1;
+        const total = count || 1;
+
         for (let i = 0; i < total; i++) {
             const hue = (i * 360 / total);
             bg.push(`hsl(${hue}, 80%, 50%)`);
@@ -171,7 +186,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 legend: {
                     display: true,
                     position: 'bottom',
-                    labels: { boxWidth: 14, boxHeight: 14, padding: 15, font: { size: 11 } },
+                    labels: {
+                        boxWidth : 14,
+                        boxHeight: 14,
+                        padding  : 15,
+                        font     : { size: 11 },
+                    },
                 },
                 tooltip: {
                     enabled: true,
@@ -179,9 +199,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     callbacks: {
                         label: function (context) {
                             const label = context.label || '';
-                            const d = detailMap[label] || { telat:0, sakit:0, izin:0, tanpa_kabar:0, cuti:0 };
+                            const d = detailMap[label] || {
+                                telat: 0, sakit: 0, izin: 0, tanpa_kabar: 0, cuti: 0
+                            };
                             const total = d.telat + d.sakit + d.izin + d.tanpa_kabar + d.cuti;
                             const pad = (txt) => txt.padEnd(13);
+
                             return [
                                 pad('Situs') + ': ' + label,
                                 pad('Telat') + ': ' + d.telat,
@@ -199,88 +222,95 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
-    function createPieChart(canvasId, labels, totals, detailMap) {
-        const canvas = document.getElementById(canvasId);
-        if (!canvas) return null;
-        const ctx = canvas.getContext('2d');
-        const { bg, border } = buildPieColors(labels);
+    function createPieChart(canvasId, cfg) {
+        const el = document.getElementById(canvasId);
+        if (!el) return null;
+
+        const ctx = el.getContext('2d');
+        const { bg, border } = buildPieColors(cfg.situsLabels.length);
+
         return new Chart(ctx, {
             type: 'pie',
             data: {
-                labels: labels,
+                labels: cfg.situsLabels,
                 datasets: [{
-                    data: totals,
+                    data           : cfg.situsTotals,
                     backgroundColor: bg,
-                    borderColor: border,
-                    borderWidth: 3,
-                    hoverOffset: 8,
+                    borderColor    : border,
+                    borderWidth    : 3,
+                    hoverOffset    : 8,
                 }],
             },
-            options: buildPieOptions(detailMap),
+            options: buildPieOptions(cfg.situsDetail),
         });
     }
 
-    function updatePieChart(chart, labels, totals, detailMap) {
+    function updatePieChart(chart, cfg) {
         if (!chart) return;
-        const { bg, border } = buildPieColors(labels);
-        chart.data.labels                = labels;
-        chart.data.datasets[0].data      = totals;
+
+        const { bg, border } = buildPieColors(cfg.situsLabels.length);
+
+        chart.data.labels                    = cfg.situsLabels;
+        chart.data.datasets[0].data          = cfg.situsTotals;
         chart.data.datasets[0].backgroundColor = bg;
         chart.data.datasets[0].borderColor     = border;
-        chart.options = buildPieOptions(detailMap);
+        chart.options                        = buildPieOptions(cfg.situsDetail);
+
         chart.update();
     }
 
     // ================== INIT CHART PERTAMA ==================
-    let cmpP1BarChart = createBarChart('chartCompareP1Bar', labelsP1, dataTelatP1, dataSakitP1, dataIzinP1, dataTanpaKabarP1, dataCutiP1);
-    let cmpP2BarChart = createBarChart('chartCompareP2Bar', labelsP2, dataTelatP2, dataSakitP2, dataIzinP2, dataTanpaKabarP2, dataCutiP2);
-    let cmpP1PieChart = createPieChart('chartCompareP1Pie', situsLabelsP1, situsTotalsP1, situsDetailP1);
-    let cmpP2PieChart = createPieChart('chartCompareP2Pie', situsLabelsP2, situsTotalsP2, situsDetailP2);
+    const charts = {
+        p1: {
+            bar: createBarChart('chartCompareP1Bar', initial.p1),
+            pie: createPieChart('chartCompareP1Pie', initial.p1),
+        },
+        p2: {
+            bar: createBarChart('chartCompareP2Bar', initial.p2),
+            pie: createPieChart('chartCompareP2Pie', initial.p2),
+        },
+    };
 
     // ================== DROPDOWN TAHUN: UPDATE VIA AJAX ==================
     const yearSelect = document.getElementById('compare_year');
+
     if (yearSelect) {
         yearSelect.addEventListener('change', function () {
-            const year = this.value;
+            const year = this.value || '';
 
-            fetch(`{{ route('hrdmanagement.grafik.compare_data') }}?year=${year}`)
+            fetch(`{{ route('hrdmanagement.grafik.compare_data') }}?year=${encodeURIComponent(year)}`)
                 .then(res => res.json())
                 .then(data => {
-                    // update bar periode 1 & 2
-                    updateBarChart(
-                        cmpP1BarChart,
-                        data.cmpLabels1,
-                        data.cmpTelat1,
-                        data.cmpSakit1,
-                        data.cmpIzin1,
-                        data.cmpTanpa1,
-                        data.cmpCuti1
-                    );
-                    updateBarChart(
-                        cmpP2BarChart,
-                        data.cmpLabels2,
-                        data.cmpTelat2,
-                        data.cmpSakit2,
-                        data.cmpIzin2,
-                        data.cmpTanpa2,
-                        data.cmpCuti2
-                    );
+                    const cfg = {
+                        p1: {
+                            labels      : data.cmpLabels1        || [],
+                            telat       : data.cmpTelat1         || [],
+                            sakit       : data.cmpSakit1         || [],
+                            izin        : data.cmpIzin1          || [],
+                            tanpaKabar  : data.cmpTanpa1         || [],
+                            cuti        : data.cmpCuti1          || [],
+                            situsLabels : data.cmpDiagramLabels1 || [],
+                            situsTotals : data.cmpDiagramTotals1 || [],
+                            situsDetail : data.cmpDiagramDetail1 || [],
+                        },
+                        p2: {
+                            labels      : data.cmpLabels2        || [],
+                            telat       : data.cmpTelat2         || [],
+                            sakit       : data.cmpSakit2         || [],
+                            izin        : data.cmpIzin2          || [],
+                            tanpaKabar  : data.cmpTanpa2         || [],
+                            cuti        : data.cmpCuti2          || [],
+                            situsLabels : data.cmpDiagramLabels2 || [],
+                            situsTotals : data.cmpDiagramTotals2 || [],
+                            situsDetail : data.cmpDiagramDetail2 || [],
+                        },
+                    };
 
-                    // update pie periode 1 & 2
-                    updatePieChart(
-                        cmpP1PieChart,
-                        data.cmpDiagramLabels1,
-                        data.cmpDiagramTotals1,
-                        data.cmpDiagramDetail1
-                    );
-                    updatePieChart(
-                        cmpP2PieChart,
-                        data.cmpDiagramLabels2,
-                        data.cmpDiagramTotals2,
-                        data.cmpDiagramDetail2
-                    );
+                    updateBarChart(charts.p1.bar, cfg.p1);
+                    updateBarChart(charts.p2.bar, cfg.p2);
+                    updatePieChart(charts.p1.pie, cfg.p1);
+                    updatePieChart(charts.p2.pie, cfg.p2);
 
-                    // optional: update URL tanpa reload
                     const url = new URL(window.location.href);
                     url.searchParams.set('tab', 'compare');
                     url.searchParams.set('compare_year', year);
@@ -294,4 +324,3 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 @endpush
-
