@@ -1,6 +1,6 @@
 @push('styles')
 <style>
-    /* container semua staff */
+    /* ===== STAFF CONTAINER & PILL ===== */
     #staffContainer {
         display: flex;
         flex-wrap: wrap;
@@ -8,7 +8,6 @@
         gap: 12px;
     }
 
-    /* pill staff */
     .staff-pill-wrapper {
         width: 170px;
         padding: 8px 10px;
@@ -47,7 +46,7 @@
     .staff-name {
         font-weight: 600;
         font-size: 14px;
-        color: white;
+        color: #fff;
     }
 
     .staff-id {
@@ -55,34 +54,40 @@
         color: #e2e2e2;
     }
 
-    /* kolom remarks (dipakai di beberapa tabel) */
+    /* ===== REMARKS COLUMN ===== */
     td.col-remarks {
         white-space: normal !important;
         word-wrap: break-word;
         word-break: break-word;
-    }
-    #detailAbsensiModal table td.col-remarks {
-        max-width: 260px;
-    }
-    #detailAbsensiTable td.col-remarks {
         max-width: 260px;
     }
 
-    /* nomor di kolom pertama detailAbsensiTable */
     #detailAbsensiTable th:nth-child(1),
     #detailAbsensiTable td:nth-child(1) {
         width: 1%;
         text-align: center;
     }
 
+    /* SELECT MULTI SITUS (Choices) */
     .choices__inner {
         max-height: 80px;
         overflow-y: auto;
     }
+
+    /* CARD HEADER BIRU UNTUK PILIH SITUS & STAFF TOOLS */
+    .card-header-turquoise {
+        background: #17a2b8;
+        border-radius: 10px;
+    }
+
+    .staff-tools-card {
+        height: 60px;
+        width: 1010px;
+        position: relative;
+        right: 100px;
+    }
 </style>
 @endpush
-
-
 
 <div class="tab-pane fade" id="cases" role="tabpanel" aria-labelledby="cases-tab">
 
@@ -90,107 +95,112 @@
         <p class="text-center text-muted">Belum ada data situs.</p>
     @else
 
-{{-- SUMMARY KECIL OP ABSENSI --}}
-<div class="row justify-content-center mb-3">
-    <div class="col-md-4 mb-2">
-        <div class="card shadow-sm border-left-primary">
-            <div class="card-body py-2">
-                <div class="small text-muted">Total Situs</div>
-                <div class="h5 mb-0" id="card-total-sites">-</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-2">
-        <div class="card shadow-sm border-left-success">
-            <div class="card-body py-2">
-                <div class="small text-muted">Total Staff Aktif</div>
-                <div class="h5 mb-0" id="card-total-staff">-</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-        {{-- PILIH SITUS (SELECT) --}}
-<div class="row justify-content-center mb-3">
-    <div class="col-lg-8 col-xl-6">
-        <div class="card shadow-sm border-0">
-            <div class="card-body py-2" style="background: #17a2b8; border-radius: 10px;">
-                <div class="d-flex align-items-center mb-2">
-                    <button type="button" class="btn btn-sm btn-outline-info rounded-circle mr-2">
-                        <i class="fa fa-diamond" style="color: white"></i>
-                    </button>
-                    <div>
-                        <div class="font-weight-bold small mb-0" style="color: white">Pilih Situs</div>
-                        <small class="text-muted d-block" style="color: black !important;">Pilih satu atau beberapa situs</small>
+        {{-- SUMMARY KECIL OP ABSENSI --}}
+        <div class="row justify-content-center mb-3">
+            <div class="col-md-4 mb-2">
+                <div class="card shadow-sm border-left-primary">
+                    <div class="card-body py-2">
+                        <div class="small text-muted">Total Situs</div>
+                        <div class="h5 mb-0" id="card-total-sites">-</div>
                     </div>
                 </div>
-
-                <select id="siteSelect"
-                        class="form-control form-control-sm"
-                        multiple
-                        data-placeholder="Pilih situs...">
-                    @foreach ($sites as $situs)
-                        <option value="{{ $situs->id }}">{{ $situs->nama_situs }}</option>
-                    @endforeach
-                </select>
+            </div>
+            <div class="col-md-4 mb-2">
+                <div class="card shadow-sm border-left-success">
+                    <div class="card-body py-2">
+                        <div class="small text-muted">Total Staff Aktif</div>
+                        <div class="h5 mb-0" id="card-total-staff">-</div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</div>
 
-<div id="opEmptyState" class="row justify-content-center mt-4">
-    <div class="col-lg-6 text-center text-muted">
-        <i class="fas fa-users fa-3x mb-3"></i>
-        <h5 class="mb-1">Belum ada situs yang dipilih</h5>
-        <p class="mb-2">
-            Pilih satu atau beberapa situs di atas untuk menampilkan daftar staff
-            dan menginput absensi.
-        </p>
-        <ul class="list-unstyled small mb-0">
-            <li>1. Pilih situs pada kotak <strong>"Pilih Situs"</strong></li>
-            <li>2. Daftar staff akan muncul di bawah</li>
-            <li>3. Klik nama staff untuk input absensi</li>
-        </ul>
-    </div>
-</div>
-
-{{-- SECTION STAFF --}}
-<div id="staffSection" style="display:none;">
-    <div class="row justify-content-center mb-2">
-        <div class="col-lg-8 col-xl-6">
-            <div class="card bg-light border-0">
-            <div class="card-body py-2" style="background: #17a2b8; border-radius: 10px; height: 60px; 
-            width: 1010px; position: relative; right: 100px;">
-                    <div class="row align-items-center">
-                        {{-- kolom search --}}
-                        <div class="col-md-7 mb-2 mb-md-0">
-                            <div class="input-group input-group-sm" style="top: 7px">
-                                <div class="input-group-prepend">
-                                    <span class="input-group-text">
-                                        <i class="fas fa-search"></i>
-                                    </span>
-                                </div>
-                                <input type="text" id="searchStaff"
-                                       class="form-control form-control-sm"
-                                       placeholder="Cari staff...">
+        {{-- PILIH SITUS (SELECT) --}}
+        <div class="row justify-content-center mb-3">
+            <div class="col-lg-8 col-xl-6">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body py-2 card-header-turquoise">
+                        <div class="d-flex align-items-center mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-info rounded-circle mr-2">
+                                <i class="fa fa-diamond" style="color: white"></i>
+                            </button>
+                            <div>
+                                <div class="font-weight-bold small mb-0" style="color: white">Pilih Situs</div>
+                                <small class="text-muted d-block" style="color: black !important;">
+                                    Pilih satu atau beberapa situs
+                                </small>
                             </div>
                         </div>
 
-                        <div class="col-md-5 text-md-right">
-                            <button type="button" id="btnDetailAbsensi"
-                                    class="btn btn-success btn-sm" style="position: relative; top:7px;" disabled>
-                                LIST DETAIL ABSENSI
-                            </button>
-                        </div>
+                        <select id="siteSelect"
+                                class="form-control form-control-sm"
+                                multiple
+                                data-placeholder="Pilih situs...">
+                            @foreach ($sites as $situs)
+                                <option value="{{ $situs->id }}">{{ $situs->nama_situs }}</option>
+                            @endforeach
+                        </select>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+
+        {{-- EMPTY STATE --}}
+        <div id="opEmptyState" class="row justify-content-center mt-4">
+            <div class="col-lg-6 text-center text-muted">
+                <i class="fas fa-users fa-3x mb-3"></i>
+                <h5 class="mb-1">Belum ada situs yang dipilih</h5>
+                <p class="mb-2">
+                    Pilih satu atau beberapa situs di atas untuk menampilkan daftar staff
+                    dan menginput absensi.
+                </p>
+                <ul class="list-unstyled small mb-0">
+                    <li>1. Pilih situs pada kotak <strong>"Pilih Situs"</strong></li>
+                    <li>2. Daftar staff akan muncul di bawah</li>
+                    <li>3. Klik nama staff untuk input absensi</li>
+                </ul>
+            </div>
+        </div>
+
+        {{-- SECTION STAFF --}}
+        <div id="staffSection" style="display:none;">
+            <div class="row justify-content-center mb-2">
+                <div class="col-lg-8 col-xl-6">
+                    <div class="card bg-light border-0 staff-tools-card">
+                        <div class="card-body py-2 card-header-turquoise">
+                            <div class="row align-items-center">
+                                {{-- kolom search --}}
+                                <div class="col-md-7 mb-2 mb-md-0">
+                                    <div class="input-group input-group-sm" style="top: 7px">
+                                        <div class="input-group-prepend">
+                                            <span class="input-group-text">
+                                                <i class="fas fa-search"></i>
+                                            </span>
+                                        </div>
+                                        <input type="text" id="searchStaff"
+                                               class="form-control form-control-sm"
+                                               placeholder="Cari staff...">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-5 text-md-right">
+                                    <button type="button" id="btnDetailAbsensi"
+                                            class="btn btn-success btn-sm"
+                                            style="position: relative; top:7px;"
+                                            disabled>
+                                        LIST DETAIL ABSENSI
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <hr>
 
             {{-- deretan NAMA + tombol merah --}}
-            <div id="staffContainer" class="d-flex flex-wrap justify-content-center"></div>
+            <div id="staffContainer"></div>
         </div>
     @endif
 
@@ -216,6 +226,7 @@
                                 <th>Nama Situs</th>
                                 <th>Tanggal</th>
                                 <th>Status</th>
+                                <th>Periode Cuti</th>
                                 <th style="width:30%;">Remarks</th>
                             </tr>
                         </thead>
@@ -246,15 +257,12 @@
     </div>
 </div>
 
-
 @include('pages.hrdmanagement.new')
 
-
 @push('scripts')
-
 <script>
 $(function () {
-    // ================== KONSTAN & ELEMEN ==================
+    // ===== ROUTES & ELEMENTS =====
     const routes = {
         staff : '{{ route('opforum.opabsensi.staff') }}',
         detail: '{{ route('opforum.opabsensi.detail') }}',
@@ -274,11 +282,31 @@ $(function () {
     const $newForm         = $('#newAbsensiForm');
     const $forceCreate     = $('#force_create');
 
+        $newModal.on('change', 'input[name="kehadiran[]"]', function () {
+        const $all = $newModal.find('input[name="kehadiran[]"]');
+
+        // pastikan hanya satu yang terpilih
+        $all.not(this).prop('checked', false);
+
+        if (this.value === 'CUTI' && this.checked) {
+            const defaultDate = $('#new_form_tanggal').val() || new Date().toISOString().slice(0, 10);
+
+            $('#cutiDateRangeWrapper').show();
+            $('#cuti_start').val(defaultDate);
+            $('#cuti_end').val(defaultDate);
+            $('#cuti_end').attr('min', defaultDate);
+        } else {
+            $('#cutiDateRangeWrapper').hide();
+            $('#cuti_start').val('');
+            $('#cuti_end').val('');
+        }
+    });
+
     let currentSiteIds  = [];
     let currentSiteName = '';
     let daTable         = null;
 
-    // ================== INIT CHOICES (MULTI SELECT SITUS) ==================
+    // ===== INIT CHOICES (MULTI SELECT SITUS) =====
     if ($siteSelect.length) {
         new Choices($siteSelect[0], {
             removeItemButton: true,
@@ -288,7 +316,8 @@ $(function () {
         });
     }
 
-        $.getJSON(routes.stats)
+    // ===== LOAD SUMMARY (TOTAL SITUS & STAFF) =====
+    $.getJSON(routes.stats)
         .done(function (res) {
             $('#card-total-sites').text(res.totalSites ?? '-');
             $('#card-total-staff').text(res.totalStaff ?? '-');
@@ -298,7 +327,7 @@ $(function () {
             $('#card-total-staff').text('-');
         });
 
-    // ================== HELPER: RENDER STAFF PILL ==================
+    // ===== HELPER: RENDER STAFF PILL =====
     function renderStaffPills(list) {
         $staffContainer.empty();
 
@@ -326,7 +355,7 @@ $(function () {
         });
     }
 
-    // ================== HELPER: DATATABLE DETAIL ==================
+    // ===== HELPER: DATATABLE DETAIL =====
     function initDetailTable() {
         if (daTable) return daTable;
 
@@ -341,7 +370,7 @@ $(function () {
             },
             columnDefs: [
                 { targets: 0, width: '40px', className: 'text-center' },
-                { targets: 6, className: 'col-remarks' }
+                { targets: 7, className: 'col-remarks' }
             ]
         });
 
@@ -350,22 +379,33 @@ $(function () {
 
     function fillDetailTable(rows) {
         const table = initDetailTable();
-        const data  = (rows || []).map((row, i) => ([
-            i + 1,
-            row.id_admin   ?? '-',
-            row.nama_staff ?? '-',
-            row.nama_situs ?? '-',
-            row.tanggal    ?? '-',
-            row.status     ?? '-',
-            row.remarks    ?? '-',
-        ]));
+        const data  = (rows || []).map((row, i) => {
+            const cutiStart = row.cuti_start;
+            const cutiEnd   = row.cuti_end;
+
+            let cutiText = '-';
+            if (cutiStart && cutiEnd) {
+                cutiText = `${cutiStart} sd ${cutiEnd}`;
+            }
+
+            return [
+                i + 1,
+                row.id_admin   ?? '-',
+                row.nama_staff ?? '-',
+                row.nama_situs ?? '-',
+                row.tanggal    ?? '-',
+                row.status     ?? '-',
+                cutiText,
+                row.remarks    ?? '-',
+            ];
+        });
 
         table.clear();
         if (data.length) table.rows.add(data);
         table.draw();
     }
 
-    // ================== HELPER: LOAD STAFF BY SITUS ==================
+    // ===== HELPER: LOAD STAFF BY SITUS =====
     function loadStaffBySites(ids) {
         if (!ids.length) {
             $staffSection.hide();
@@ -400,7 +440,7 @@ $(function () {
         });
     }
 
-    // ================== HELPER: OPEN MODAL ABSENSI BARU ==================
+    // ===== HELPER: OPEN MODAL ABSENSI BARU =====
     function openNewAbsensiModal(idAdmin, namaStaff, idSitusRaw) {
         if ($newForm.length) {
             $newForm[0].reset();
@@ -427,7 +467,7 @@ $(function () {
         $newModal.modal('show');
     }
 
-    // ================== SUBMIT NEW ABSENSI VIA AJAX (OP ABSENSI) ==================
+    // ===== SUBMIT NEW ABSENSI VIA AJAX (OP ABSENSI) =====
     if ($newForm.length) {
         $newForm.on('submit', function (e) {
             e.preventDefault();
@@ -459,7 +499,7 @@ $(function () {
         });
     }
 
-    // ================== HELPER: LOAD DETAIL ABSENSI PER SITUS ==================
+    // ===== HELPER: LOAD DETAIL ABSENSI PER SITUS =====
     function loadDetailAbsensi(ids, siteName) {
         if (!ids.length) {
             Swal.fire({
@@ -497,7 +537,7 @@ $(function () {
         });
     }
 
-    // ================== EVENT: CHANGE SITUS ==================
+    // ===== EVENT: CHANGE SITUS =====
     $siteSelect.on('change', function () {
         const ids = $(this).val() || [];
 
@@ -510,7 +550,7 @@ $(function () {
         loadStaffBySites(ids);
     });
 
-    // ================== EVENT: SEARCH STAFF LOKAL ==================
+    // ===== EVENT: SEARCH STAFF LOKAL =====
     $searchStaff.on('keyup', function () {
         const q = $(this).val().toLowerCase();
 
@@ -520,7 +560,7 @@ $(function () {
         });
     });
 
-    // ================== EVENT: KLIK PILL STAFF → MODAL ABSENSI BARU ==================
+    // ===== EVENT: KLIK PILL STAFF → MODAL ABSENSI BARU =====
     $(document).on('click', '.staff-open-modal', function () {
         const idAdmin   = $(this).data('id-admin');
         const namaStaff = $(this).data('nama-staff');
@@ -529,14 +569,13 @@ $(function () {
         openNewAbsensiModal(idAdmin, namaStaff, idSitus);
     });
 
-    // ================== EVENT: TOMBOL LIST DETAIL ABSENSI ==================
+    // ===== EVENT: TOMBOL LIST DETAIL ABSENSI =====
     $btnDetail.on('click', function () {
         loadDetailAbsensi(currentSiteIds, currentSiteName);
     });
-
 });
 
-// ================== POPUP NOTIFIKASI (SweetAlert) ==================
+// ===== POPUP NOTIFIKASI (SweetAlert) =====
 function showPopup(type, message) {
     Swal.fire({
         icon: type === 'success' ? 'success' : 'error',
@@ -546,6 +585,3 @@ function showPopup(type, message) {
 }
 </script>
 @endpush
-
-
-

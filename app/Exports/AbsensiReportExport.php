@@ -65,6 +65,7 @@ class AbsensiReportExport implements FromCollection, WithHeadings
                 r.cuti,
                 r.total_absensi
             ")
+            ->orderByDesc('r.periode')
             ->orderBy('r.id_admin')
             ->get();
 

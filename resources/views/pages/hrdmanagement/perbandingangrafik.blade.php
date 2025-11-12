@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function () {
             { label:'Sakit', data:sakit, backgroundColor:'rgb(0,123,255)', borderColor:'rgb(0,123,255)', borderWidth:1, borderRadius:4 },
             { label:'Izin',  data:izin,  backgroundColor:'rgb(23,162,184)', borderColor:'rgb(23,162,184)', borderWidth:1, borderRadius:4 },
             { label:'Tanpa Kabar', data:tanpaKabar, backgroundColor:'rgb(220,53,69)', borderColor:'rgb(220,53,69)', borderWidth:1, borderRadius:4 },
-            { label:'Cuti',  data:cuti,  backgroundColor:'rgb(40,167,69)', borderColor:'rgb(40,167,69)', borderWidth:1, borderRadius:10, hidden:true },
+            { label:'Cuti',  data:cuti,  backgroundColor:'rgb(40,167,69)', borderColor:'rgb(40,167,69)', borderWidth:1, borderRadius:10 },
         ];
     }
 

@@ -187,6 +187,7 @@
                                             <th>Situs</th>
                                             <th>Tanggal</th>
                                             <th>Status</th>
+                                            <th>Periode Cuti</th>             <!-- 6 -->
                                             <th>Remarks</th>
                                         </tr>
                                     </thead>
@@ -252,7 +253,7 @@
                         className: 'col-tanggal'
                     },
                     {
-                        targets: 6,
+                        targets: 7,
                         className: 'col-remarks'
                     }
                 ]
@@ -262,25 +263,35 @@
                 detailTable.clear();
 
                 if (!rows || !rows.length) {
-                    // cukup draw kosong, DataTables akan tampilkan "Tidak ada data."
                     detailTable.draw();
                     return;
                 }
 
                 const dataSet = rows.map(function(row, i) {
+                    // hitung teks periode cuti
+                    const cutiStart = row.cuti_start;
+                    const cutiEnd   = row.cuti_end;
+
+                    let cutiText = '-';
+                    if (cutiStart && cutiEnd) {
+                        cutiText = `${cutiStart} sd ${cutiEnd}`;
+                    }
+
                     return [
                         i + 1,
-                        row.id_admin ?? '-',
+                        row.id_admin   ?? '-',
                         row.nama_staff ?? '-',
                         row.nama_situs ?? '-',
-                        row.tanggal ?? '-',
-                        row.status ?? '-',
-                        row.remarks ?? '-'
+                        row.tanggal    ?? '-',
+                        row.status     ?? '-',
+                        cutiText,
+                        row.remarks    ?? '-'
                     ];
                 });
 
                 detailTable.rows.add(dataSet).draw();
             }
+
 
             // ===================== CHART 1 PERIODE (6 BULAN) =====================
             const ctx = document.getElementById('chartAbsensiTahunan').getContext('2d');

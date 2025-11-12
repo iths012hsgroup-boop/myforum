@@ -4,38 +4,39 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\AbsensiReportExport;
 use App\Helpers\AuthLink;
-
-use App\Models\User; // Asumsi model User
-use App\Models\Daftarsitus; // Asumsi model Daftarsitus
-use App\Models\Absensi; // <<< Asumsi Anda punya Model Absensi
+use App\Models\User;
+use App\Models\Daftarsitus;
+use App\Models\Absensi;
 use App\Models\AbsensiReport;
-
 use Carbon\Carbon;
 
 class HrdManagementController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth');
+    }
 
+    /* ==========================
+     * HELPER UMUM
+     * ========================== */
 
-    // 🔹 1) Cek akses menu sekali, dipakai ulang
     private function ensureHrdAccess()
     {
         $user  = Auth::user();
         $akses = AuthLink::access_url($user->id_admin, 'hrdmanagement');
 
         if (empty($akses) || $akses[0]->nilai == 0) {
-            // boleh pakai abort(403) atau view('error'), sesuaikan project-mu
             return view('error');
         }
 
-        return null; // artinya OK
+        return null;
     }
 
-    // 🔹 2) Ambil info situs user: namaSitusLogin, idSitusArray, isAllSite
     private function resolveUserSiteScope(): array
     {
         $user           = Auth::user();
@@ -50,11 +51,12 @@ class HrdManagementController extends Controller
                 $namaSitusLogin = 'ALL SITE';
                 $isAllSite      = true;
             } else {
-                $idSitusPertama = $idSitusArray[0];
-                $situs          = Daftarsitus::find($idSitusPertama);
-
-                if ($situs) {
-                    $namaSitusLogin = $situs->nama_situs;
+                $idSitusPertama = $idSitusArray[0] ?? null;
+                if ($idSitusPertama) {
+                    $situs = Daftarsitus::find($idSitusPertama);
+                    if ($situs) {
+                        $namaSitusLogin = $situs->nama_situs;
+                    }
                 }
             }
         }
@@ -62,7 +64,6 @@ class HrdManagementController extends Controller
         return [$namaSitusLogin, $idSitusArray, $isAllSite, $user];
     }
 
-    // 🔹 3) Apply filter situs ke query Eloquent/Query Builder
     private function applySiteFilter($query, array $idSitusArray, bool $isAllSite, string $column = 'id_situs')
     {
         return $query->when(!$isAllSite && !empty($idSitusArray), function ($q) use ($idSitusArray, $column) {
@@ -70,15 +71,45 @@ class HrdManagementController extends Controller
         });
     }
 
-     /**
-     * Create a new controller instance.
-     *
-     * @return void
-     */
-    public function __construct()
+    private function getActiveUsersBySite(array $idSitusArray, bool $isAllSite)
     {
-        $this->middleware('auth');
+        $q = User::where('status', 1)
+            ->select('id', 'id_admin', 'nama_staff', 'id_situs');
+
+        if (!$isAllSite && !empty($idSitusArray)) {
+            $q->where(function ($query) use ($idSitusArray) {
+                foreach ($idSitusArray as $idSitus) {
+                    $query->orWhereRaw('FIND_IN_SET(?, id_situs)', [trim($idSitus)]);
+                }
+            });
+        }
+
+        return $q->get();
     }
+
+    private function monthNames(): array
+    {
+        return [
+            null,
+            'Januari','Februari','Maret','April','Mei','Juni',
+            'Juli','Agustus','September','Oktober','November','Desember',
+        ];
+    }
+
+    private function normalizeIdList($raw): array
+    {
+        if (is_array($raw)) {
+            return array_filter($raw);
+        }
+        if (!empty($raw)) {
+            return array_filter(array_map('trim', explode(',', $raw)));
+        }
+        return [];
+    }
+
+    /* ==========================
+     * INDEX & DATA STAFF
+     * ========================== */
 
     public function index(Request $request)
     {
@@ -88,37 +119,54 @@ class HrdManagementController extends Controller
 
         [$namaSitusLogin, $idSitusArray, $isAllSite, $userLogin] = $this->resolveUserSiteScope();
 
-        $filteredUsers = collect();
-
-        if ($userLogin && !empty($idSitusArray)) {
-            if ($isAllSite) {
-                $filteredUsers = User::where('status', 1) // 🔹 hanya user aktif
-                    ->select('id', 'id_admin', 'nama_staff', 'id_situs')
-                    ->get();
-            } else {
-                $filteredUsers = User::where('status', 1)  // 🔹 hanya user aktif
-                    ->where(function ($query) use ($idSitusArray) {
-                        foreach ($idSitusArray as $idSitus) {
-                            $query->orWhereRaw("FIND_IN_SET(?, id_situs)", [trim($idSitus)]);
-                        }
-                    })
-                    ->select('id', 'id_admin', 'nama_staff', 'id_situs')
-                    ->get();
-            }
-        }
+        $filteredUsers = ($userLogin && !empty($idSitusArray))
+            ? $this->getActiveUsersBySite($idSitusArray, $isAllSite)
+            : collect();
 
         return view('pages.hrdmanagement.index', compact('namaSitusLogin', 'filteredUsers'));
     }
+
+    public function staffData()
+    {
+        [$namaSitusLogin, $idSitusArray, $isAllSite, $userLogin] = $this->resolveUserSiteScope();
+
+        $rows = [];
+
+        if ($userLogin && !empty($idSitusArray)) {
+            $filteredUsers = $this->getActiveUsersBySite($idSitusArray, $isAllSite);
+
+            foreach ($filteredUsers as $user) {
+                $idSitusPertama = null;
+                if (!empty($user->id_situs)) {
+                    $parts          = explode(',', $user->id_situs);
+                    $idSitusPertama = trim($parts[0]);
+                }
+
+                $rows[] = [
+                    'id_admin'       => $user->id_admin,
+                    'nama_staff'     => $user->nama_staff,
+                    'id_situs_first' => $idSitusPertama,
+                    'id_situs'       => $user->id_situs,
+                ];
+            }
+        }
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /* ==========================
+     * CRUD ABSENSI (FORM HRD)
+     * ========================== */
 
     public function updateAbsensi(Request $request, $id)
     {
         $request->validate([
             'id_admin'   => 'required',
-            'id_situs'   => 'required|string|max:50', // ⬅ tadinya integer
+            'id_situs'   => 'required|string|max:50',
             'nama_staff' => 'required|string|max:100',
             'tanggal'    => 'required|date',
             'kehadiran'  => 'required|array',
-            'remarks'    => 'nullable|string|max:255',
+            'remarks'    => 'required|string|max:255',
             'cuti_start' => 'nullable|date',
             'cuti_end'   => 'nullable|date|after_or_equal:cuti_start',
         ]);
@@ -134,25 +182,17 @@ class HrdManagementController extends Controller
 
         $data = [
             'nama_staff' => $request->nama_staff,
-            'id_situs'   => $request->id_situs,   // ⬅ bisa "3" atau "3,34"
+            'id_situs'   => $request->id_situs,
             'status'     => $statusString,
             'remarks'    => $request->remarks,
             'edited_by'  => $editedBy,
+            'tanggal'    => $request->tanggal,
+            'cuti_start' => $isCuti && $hasRange ? $request->cuti_start : null,
+            'cuti_end'   => $isCuti && $hasRange ? $request->cuti_end   : null,
         ];
-
-        if ($isCuti && $hasRange) {
-            $data['tanggal']    = $request->tanggal;
-            $data['cuti_start'] = $request->cuti_start;
-            $data['cuti_end']   = $request->cuti_end;
-        } else {
-            $data['tanggal']    = $request->tanggal;
-            $data['cuti_start'] = null;
-            $data['cuti_end']   = null;
-        }
 
         $absensi->update($data);
 
-        // kalau request dari AJAX, balas JSON
         if ($request->ajax()) {
             return response()->json([
                 'success' => true,
@@ -160,57 +200,43 @@ class HrdManagementController extends Controller
             ]);
         }
 
-        // fallback submit biasa
         return redirect()->back()->with('success', 'Data absensi berhasil diupdate.');
     }
-
 
     public function storeAbsensi(Request $request)
     {
         $request->validate([
             'id_admin'   => 'required|string|max:50',
-            'id_situs'   => 'required|string|max:50', // ⬅ tadinya integer
+            'id_situs'   => 'required|string|max:50',
             'nama_staff' => 'required|string|max:100',
             'tanggal'    => 'required|date',
-            'remarks'    => 'nullable|string',
-            'kehadiran'  => 'nullable|array',
+            'remarks'    => 'required|string',
+            'kehadiran'  => 'required|array',
             'cuti_start' => 'nullable|date',
             'cuti_end'   => 'nullable|date|after_or_equal:cuti_start',
         ]);
 
         $statusArray  = $request->input('kehadiran');
-        $statusString = 'HADIR';
-
-        if (!empty($statusArray)) {
-            $statusString = implode(', ', $statusArray);
-        }
-
-        $userCode = Auth::user()->id_admin ?? Auth::id();
+        $statusString = !empty($statusArray) ? implode(', ', $statusArray) : 'HADIR';
+        $userCode     = Auth::user()->id_admin ?? Auth::id();
 
         $isCuti   = !empty($statusArray) && in_array('CUTI', $statusArray);
         $hasRange = $request->filled('cuti_start') && $request->filled('cuti_end');
 
         $data = [
             'id_admin'   => $request->id_admin,
-            'id_situs'   => $request->id_situs,  // ⬅ boleh "3,34"
+            'id_situs'   => $request->id_situs,
             'nama_staff' => $request->nama_staff,
             'status'     => $statusString,
             'remarks'    => $request->remarks,
             'created_by' => $userCode,
             'edited_by'  => null,
+            'tanggal'    => $request->tanggal,
+            'cuti_start' => $isCuti && $hasRange ? $request->cuti_start : null,
+            'cuti_end'   => $isCuti && $hasRange ? $request->cuti_end   : null,
         ];
 
-        if ($isCuti && $hasRange) {
-            $data['tanggal']    = $request->tanggal;
-            $data['cuti_start'] = $request->cuti_start;
-            $data['cuti_end']   = $request->cuti_end;
-        } else {
-            $data['tanggal']    = $request->tanggal;
-            $data['cuti_start'] = null;
-            $data['cuti_end']   = null;
-        }
-
-        $absensi = Absensi::create($data);
+        Absensi::create($data);
 
         if ($request->ajax()) {
             return response()->json([
@@ -219,11 +245,8 @@ class HrdManagementController extends Controller
             ]);
         }
 
-        return redirect()
-            ->back()
-            ->with('success', 'Absensi berhasil disimpan!');
+        return redirect()->back()->with('success', 'Absensi berhasil disimpan!');
     }
-
 
     public function listAbsensi(Request $request)
     {
@@ -235,15 +258,12 @@ class HrdManagementController extends Controller
         $lastWeek = $today->copy()->subDays(6);
 
         $absensi = Absensi::from('tbhs_absensi as a')
-            // join users optional, kalau nggak dipakai bisa dihapus
-            // ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
             ->leftJoin('tbhs_situs as s', function ($join) {
-                // pakai kolom a.id_situs (varchar "4,34")
                 $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
             })
             ->where('a.id_admin', $request->id_admin)
+            ->where('a.soft_delete', 0)       // ⬅️ TAMBAH INI
             ->when($request->filled('id_situs'), function ($q) use ($request) {
-                // filter berdasarkan id_situs yang disimpan di tbhs_absensi
                 $q->where('a.id_situs', 'LIKE', '%'.$request->id_situs.'%');
             })
             ->whereBetween('a.tanggal', [$lastWeek, $today])
@@ -275,91 +295,92 @@ class HrdManagementController extends Controller
         return response()->json($absensi);
     }
 
-
     public function destroyAbsensi($id)
-        {
-            $absensi = Absensi::find($id);
+    {
+        $absensi = Absensi::find($id);
 
-            if (! $absensi) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Data absensi tidak ditemukan.',
-                ], 404);
-            }
-
-            $absensi->delete();
-
+        if (! $absensi) {
             return response()->json([
-                'success' => true,
-                'message' => 'Data absensi berhasil dihapus.',
-            ]);
+                'success' => false,
+                'message' => 'Data absensi tidak ditemukan.',
+            ], 404);
         }
+
+        // ⬅️ SOFT DELETE, bukan delete()
+        $absensi->soft_delete = 1;
+        $absensi->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Data absensi berhasil dihapus.',
+        ]);
+    }
 
     public function checkAbsensiDuplicate(Request $request)
-        {
-            $request->validate([
-                'id_admin' => 'required',
-                'tanggal'  => 'required|date',
-            ]);
-
-            $exists = Absensi::where('id_admin', $request->id_admin)
-                ->whereDate('tanggal', $request->tanggal)
-                ->exists();
-
-            return response()->json([
-                'exists' => $exists,
-            ]);
-        }    
-
-    public function staffData()
     {
-        [$namaSitusLogin, $idSitusArray, $isAllSite, $userLogin] = $this->resolveUserSiteScope();
+        $request->validate([
+            'id_admin' => 'required',
+            'tanggal'  => 'required|date',
+        ]);
 
-        $rows = [];
+        $exists = Absensi::where('id_admin', $request->id_admin)
+            ->whereDate('tanggal', $request->tanggal)
+            ->where('soft_delete', 0)   // ⬅️ TAMBAH INI
+            ->exists();
 
-        if ($userLogin && !empty($idSitusArray)) {
-            if ($isAllSite) {
-                $filteredUsers = User::where('status', 1) // 🔹 hanya user aktif
-                    ->select('id', 'id_admin', 'nama_staff', 'id_situs')
-                    ->get();
-            } else {
-                $filteredUsers = User::where('status', 1) // 🔹 hanya user aktif
-                    ->where(function ($query) use ($idSitusArray) {
-                        foreach ($idSitusArray as $idSitus) {
-                            $query->orWhereRaw("FIND_IN_SET(?, id_situs)", [trim($idSitus)]);
-                        }
-                    })
-                    ->select('id', 'id_admin', 'nama_staff', 'id_situs')
-                    ->get();
-            }
-
-            foreach ($filteredUsers as $user) {
-                $idSitusPertama = null;
-                if (!empty($user->id_situs)) {
-                    $parts          = explode(',', $user->id_situs);
-                    $idSitusPertama = trim($parts[0]);
-                }
-
-                $rows[] = [
-                    'id_admin'       => $user->id_admin,
-                    'nama_staff'     => $user->nama_staff,
-                    'id_situs_first' => $idSitusPertama,
-                    'id_situs'       => $user->id_situs, // <<=== "4,34"
-                ];
-            }
-        }
-
-        return response()->json(['data' => $rows]);
+        return response()->json([
+            'exists' => $exists,
+        ]);
     }
+
+    public function detailAbsensi(Request $request)
+    {
+        $request->validate([
+            'id_admin' => 'required',
+        ]);
+
+        $absensi = Absensi::from('tbhs_absensi as a')
+            ->leftJoin('tbhs_situs as s', function ($join) {
+                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+            })
+            ->where('a.id_admin', $request->id_admin)
+            ->where('a.soft_delete', 0)      // ⬅️ TAMBAH INI
+            ->orderBy('a.tanggal', 'desc')
+            ->orderBy('a.id', 'desc')
+            ->groupBy(
+                'a.id',
+                'a.id_admin',
+                'a.tanggal',
+                'a.status',
+                'a.remarks',
+                'a.id_situs',
+                'a.cuti_start',
+                'a.cuti_end'
+            )
+            ->selectRaw('
+                a.id,
+                a.id_admin,
+                a.tanggal,
+                a.status,
+                a.remarks,
+                a.id_situs,
+                a.cuti_start,
+                a.cuti_end,
+                GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
+            ')
+            ->get();
+
+        return response()->json($absensi);
+    }
+
+    /* ==========================
+     * REPORTING ABSENSI
+     * ========================== */
 
     public function reportingAbsensi()
     {
-        $user = Auth::user();
-
-        // 🔐 Cek privilege menu hrdmanagement
-        $akses = AuthLink::access_url($user->id_admin, 'hrdmanagement');
-        if ($akses[0]->nilai == 0) {
-            return view('error');
+        if ($resp = $this->ensureHrdAccess()) {
+            return $resp;
         }
 
         $sites = Daftarsitus::select('id', 'nama_situs')
@@ -368,88 +389,72 @@ class HrdManagementController extends Controller
 
         return view('pages.hrdmanagement.reportingabsensi', compact('sites'));
     }
-    
 
-public function getReportingAbsensiData(Request $request)
-{
-    $idSitusInput = $request->input('id_situs'); // bisa array / string / null
-    $periode      = $request->input('periode');
-    $tahun        = $request->input('tahun');
+    public function getReportingAbsensiData(Request $request)
+    {
+        $ids     = $this->normalizeIdList($request->input('id_situs'));
+        $periode = $request->input('periode');
+        $tahun   = $request->input('tahun');
 
-    // normalisasi ke array id: [3,34]
-    $ids = [];
-    if (is_array($idSitusInput)) {
-        $ids = array_filter($idSitusInput);
-    } elseif (!empty($idSitusInput)) {
-        $ids = array_filter(explode(',', $idSitusInput));
+        $rows = DB::table('tbhs_absensireport as r')
+            ->leftJoin('tbhs_situs as s', function ($join) {
+                $join->on(DB::raw('FIND_IN_SET(s.id, r.id_situs)'), '>', DB::raw('0'));
+            })
+            ->when($ids, function ($q) use ($ids) {
+                $q->where(function ($sub) use ($ids) {
+                    foreach ($ids as $id) {
+                        $sub->orWhereRaw('FIND_IN_SET(?, r.id_situs)', [$id]);
+                    }
+                });
+            })
+            ->when($periode, function ($q) use ($periode) {
+                $q->where('r.periode', $periode);
+            })
+            ->when(!$periode && $tahun, function ($q) use ($tahun) {
+                $q->where('r.periode', 'like', $tahun.'-%');
+            })
+            ->groupBy(
+                'r.id',
+                'r.id_admin',
+                'r.nama_staff',
+                'r.id_situs',
+                'r.periode',
+                'r.sakit',
+                'r.izin',
+                'r.telat',
+                'r.tanpa_kabar',
+                'r.cuti',
+                'r.total_absensi'
+            )
+            ->selectRaw("
+                r.id,
+                r.id_admin,
+                r.nama_staff,
+                r.id_situs,
+                GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ', ') AS nama_situs,
+                r.periode,
+                r.sakit,
+                r.izin,
+                r.telat,
+                r.tanpa_kabar,
+                r.cuti,
+                r.total_absensi
+            ")
+            ->orderByDesc('r.periode')   // 🔹 tambah ini
+            ->get();
+
+        return response()->json(['data' => $rows]);
     }
-
-    $rows = DB::table('tbhs_absensireport as r')
-        ->leftJoin('tbhs_situs as s', function ($join) {
-            $join->on(DB::raw('FIND_IN_SET(s.id, r.id_situs)'), '>', DB::raw('0'));
-        })
-        ->when($ids, function ($q) use ($ids) {
-            // r.id_situs bisa "3,34" → cocokkan salah satu id di dalamnya
-            $q->where(function ($sub) use ($ids) {
-                foreach ($ids as $id) {
-                    $sub->orWhereRaw('FIND_IN_SET(?, r.id_situs)', [$id]);
-                }
-            });
-        })
-        ->when($periode, function ($q) use ($periode) {
-            $q->where('r.periode', $periode);
-        })
-        ->when(!$periode && $tahun, function ($q) use ($tahun) {
-            $q->where('r.periode', 'like', $tahun.'-%');
-        })
-        ->groupBy(
-            'r.id',
-            'r.id_admin',
-            'r.nama_staff',
-            'r.id_situs',
-            'r.periode',
-            'r.sakit',
-            'r.izin',
-            'r.telat',
-            'r.tanpa_kabar',
-            'r.cuti',
-            'r.total_absensi'
-        )
-        ->selectRaw("
-            r.id,
-            r.id_admin,
-            r.nama_staff,
-            r.id_situs,
-            GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ', ') AS nama_situs,
-            r.periode,
-            r.sakit,
-            r.izin,
-            r.telat,
-            r.tanpa_kabar,
-            r.cuti,
-            r.total_absensi
-        ")
-        ->get();
-
-    return response()->json([
-        'data' => $rows,
-    ]);
-}
-
-
-
 
     public function generateAbsensiReport(Request $request)
     {
-        // 1. Validasi input
         $request->validate([
-            'periode'  => 'required|string',   // contoh: "2025-1"
+            'periode'  => 'required|string',
         ]);
 
         $periode = $request->input('periode');
+        $parts   = explode('-', $periode);
 
-        // 2. Amankan pecahan "tahun-periode"
-        $parts = explode('-', $periode);
         if (count($parts) !== 2) {
             return response()->json([
                 'success' => false,
@@ -461,11 +466,11 @@ public function getReportingAbsensiData(Request $request)
         $periodeKe = (int) $parts[1];
 
         if ($periodeKe === 1) {
-            $start = Carbon::create($tahun, 1, 1)->toDateString();   // 1 Jan
-            $end   = Carbon::create($tahun, 6, 30)->toDateString();  // 30 Jun
+            $start = Carbon::create($tahun, 1, 1)->toDateString();
+            $end   = Carbon::create($tahun, 6, 30)->toDateString();
         } elseif ($periodeKe === 2) {
-            $start = Carbon::create($tahun, 7, 1)->toDateString();   // 1 Jul
-            $end   = Carbon::create($tahun, 12, 31)->toDateString(); // 31 Des
+            $start = Carbon::create($tahun, 7, 1)->toDateString();
+            $end   = Carbon::create($tahun, 12, 31)->toDateString();
         } else {
             return response()->json([
                 'success' => false,
@@ -473,23 +478,23 @@ public function getReportingAbsensiData(Request $request)
             ], 422);
         }
 
-        // 3. Ambil & agregasi semua karyawan dari tbhs_absensi
-        $rows = DB::table('tbhs_absensi as a')
-            ->select(
-                'a.id_admin',
-                'a.nama_staff',
-                'a.id_situs',
-                DB::raw("'{$periode}' as periode"),
-                DB::raw("SUM(CASE WHEN a.status LIKE '%SAKIT%' THEN 1 ELSE 0 END)       as sakit"),
-                DB::raw("SUM(CASE WHEN a.status LIKE '%IZIN%' THEN 1 ELSE 0 END)       as izin"),
-                DB::raw("SUM(CASE WHEN a.status LIKE '%TELAT%' THEN 1 ELSE 0 END)      as telat"),
-                DB::raw("SUM(CASE WHEN a.status LIKE '%TANPA KABAR%' THEN 1 ELSE 0 END) as tanpa_kabar"),
-                DB::raw("SUM(CASE WHEN a.status LIKE '%CUTI%' THEN 1 ELSE 0 END)       as cuti"),
-                DB::raw("COUNT(*) as total_absensi")
-            )
-            ->whereBetween('a.tanggal', [$start, $end])
-            ->groupBy('a.id_admin', 'a.nama_staff', 'a.id_situs')
-            ->get();
+            $rows = DB::table('tbhs_absensi as a')
+                ->select(
+                    'a.id_admin',
+                    'a.nama_staff',
+                    'a.id_situs',
+                    DB::raw("'{$periode}' as periode"),
+                    DB::raw("SUM(CASE WHEN a.status LIKE '%SAKIT%' THEN 1 ELSE 0 END)       as sakit"),
+                    DB::raw("SUM(CASE WHEN a.status LIKE '%IZIN%' THEN 1 ELSE 0 END)       as izin"),
+                    DB::raw("SUM(CASE WHEN a.status LIKE '%TELAT%' THEN 1 ELSE 0 END)      as telat"),
+                    DB::raw("SUM(CASE WHEN a.status LIKE '%TANPA KABAR%' THEN 1 ELSE 0 END) as tanpa_kabar"),
+                    DB::raw("SUM(CASE WHEN a.status LIKE '%CUTI%' THEN 1 ELSE 0 END)       as cuti"),
+                    DB::raw("COUNT(*) as total_absensi")
+                )
+                ->whereBetween('a.tanggal', [$start, $end])
+                ->where('a.soft_delete', 0)   // ⬅️ TAMBAH INI
+                ->groupBy('a.id_admin', 'a.nama_staff', 'a.id_situs')
+                ->get();
 
         if ($rows->isEmpty()) {
             return response()->json([
@@ -498,7 +503,6 @@ public function getReportingAbsensiData(Request $request)
             ]);
         }
 
-        // 4. Simpan/update ke tbhs_absensireport
         foreach ($rows as $row) {
             AbsensiReport::updateOrCreate(
                 [
@@ -525,42 +529,33 @@ public function getReportingAbsensiData(Request $request)
         ]);
     }
 
+    public function exportAbsensiReport(Request $request)
+    {
+        $request->validate([
+            'tahun'      => 'required|integer',
+            'periode_ke' => 'nullable|in:1,2',
+            'id_situs'   => 'nullable|string',
+        ]);
 
-public function exportAbsensiReport(Request $request)
-{
-    $request->validate([
-        'tahun'      => 'required|integer',
-        'periode_ke' => 'nullable|in:1,2',
-        // id_situs sekarang bisa "4,34" → string, bukan integer
-        'id_situs'   => 'nullable|string',
-    ]);
+        $tahun       = (string) $request->query('tahun');
+        $periodeKe   = $request->query('periode_ke');
+        $idSitusList = $this->normalizeIdList($request->query('id_situs'));
+        $periode     = $periodeKe ? ($tahun.'-'.$periodeKe) : null;
 
-    $tahun     = (string) $request->query('tahun');
-    $periodeKe = $request->query('periode_ke'); // '1' / '2' / null
-    $idSitus   = $request->query('id_situs');   // "4,34" / null
+        $suffixPeriode = $periodeKe ? ('_periode_'.$periodeKe) : '_all_periode';
+        $suffixSitus   = $idSitusList ? ('_situs_'.implode('_', $idSitusList)) : '_all_situs';
 
-    // normalisasi ke array ID, misal "4,34" → ['4','34']
-    $idSitusList = [];
-    if (!empty($idSitus)) {
-        $idSitusList = array_filter(array_map('trim', explode(',', $idSitus)));
+        $fileName = 'report_absensi_'.$tahun.$suffixPeriode.$suffixSitus.'.xlsx';
+
+        return Excel::download(
+            new AbsensiReportExport($tahun, $periode, $idSitusList ?: null),
+            $fileName
+        );
     }
 
-    $periode = $periodeKe ? ($tahun . '-' . $periodeKe) : null;
-
-    $suffixPeriode = $periodeKe ? ('_periode_'.$periodeKe) : '_all_periode';
-    $suffixSitus   = $idSitusList
-        ? ('_situs_'.implode('_', $idSitusList))  // contoh: _situs_4_34
-        : '_all_situs';
-
-    $fileName = 'report_absensi_' . $tahun . $suffixPeriode . $suffixSitus . '.xlsx';
-
-    return Excel::download(
-        // kirim ARRAY id situs ke export
-        new AbsensiReportExport($tahun, $periode, $idSitusList ?: null),
-        $fileName
-    );
-}
-
+    /* ==========================
+     * GRAFIK (TAB GRAFIK & COMPARE)
+     * ========================== */
 
     public function grafik(Request $request)
     {
@@ -574,17 +569,11 @@ public function exportAbsensiReport(Request $request)
         $year               = $now->year;
         $currentMonth       = $now->month;
         $currentMonthNumber = $currentMonth;
+        $allMonths          = $this->monthNames();
 
-        $allMonths = [
-            null,
-            'Januari','Februari','Maret','April','Mei','Juni',
-            'Juli','Agustus','September','Oktober','November','Desember',
-        ];
+        $yearQuery = Absensi::selectRaw('DISTINCT YEAR(tanggal) as tahun')
+            ->where('soft_delete', 0); // ⬅️ TAMBAH INI
 
-            // ================== DAFTAR TAHUN DARI tbhs_absensi ==================
-        $yearQuery = Absensi::selectRaw('DISTINCT YEAR(tanggal) as tahun');
-
-        // kalau mau ikut filter situs seperti grafik lain:
         $yearQuery = $this->applySiteFilter($yearQuery, $idSitusArray, $isAllSite, 'id_situs');
 
         $compareYears = $yearQuery
@@ -592,11 +581,9 @@ public function exportAbsensiReport(Request $request)
             ->pluck('tahun')
             ->toArray();
 
-        // default tahun untuk compare = tahun sekarang
         $compareYear = (int) $request->query('compare_year', $year);
 
-        // ================== DATA TAB 1 (GRAFIK) ==================
-        $mainData = $this->buildMainGrafikData(
+        $mainData    = $this->buildMainGrafikData(
             $request,
             $year,
             $currentMonth,
@@ -605,9 +592,8 @@ public function exportAbsensiReport(Request $request)
             $isAllSite
         );
 
-        // ================== DATA TAB 2 (PERBANDINGAN) ==================
         $compareData = $this->buildPerbandinganData(
-            $compareYear,   // ← PAKAI TAHUN YANG DIPILIH
+            $compareYear,
             $allMonths,
             $idSitusArray,
             $isAllSite
@@ -626,9 +612,6 @@ public function exportAbsensiReport(Request $request)
         ));
     }
 
-/**
- * Data untuk TAB 1 (grafik utama seperti sebelumnya).
- */
     private function buildMainGrafikData(
         Request $request,
         int $year,
@@ -637,7 +620,6 @@ public function exportAbsensiReport(Request $request)
         array $idSitusArray,
         bool $isAllSite
     ): array {
-        // ====== PERIODE GRAFIK BATANG ======
         $defaultPeriode = ($currentMonth <= 6) ? 1 : 2;
         $periodeKe      = (int) $request->query('periode', $defaultPeriode);
 
@@ -650,22 +632,28 @@ public function exportAbsensiReport(Request $request)
             $endMonth   = 12;
         }
 
-        // bar utama
-        [$labels, $bulanNumbers, $dataTelat, $dataSakit, $dataIzin, $dataTanpaKabar, $dataCuti]
-            = $this->getPeriodeBarAggregates($year, $startMonth, $endMonth, $allMonths, $idSitusArray, $isAllSite);
+        [
+            $labels,
+            $bulanNumbers,
+            $dataTelat,
+            $dataSakit,
+            $dataIzin,
+            $dataTanpaKabar,
+            $dataCuti,
+        ] = $this->getPeriodeBarAggregates($year, $startMonth, $endMonth, $allMonths, $idSitusArray, $isAllSite);
 
-        // 1 bulan sekarang
         $bulanSekarangLabel = $allMonths[$currentMonth];
 
-        $bulanRow = Absensi::selectRaw("
-                        SUM(CASE WHEN status LIKE '%TELAT%'       THEN 1 ELSE 0 END) as telat,
-                        SUM(CASE WHEN status LIKE '%SAKIT%'       THEN 1 ELSE 0 END) as sakit,
-                        SUM(CASE WHEN status LIKE '%IZIN%'        THEN 1 ELSE 0 END) as izin,
-                        SUM(CASE WHEN status LIKE '%TANPA KABAR%' THEN 1 ELSE 0 END) as tanpa_kabar,
-                        SUM(CASE WHEN status LIKE '%CUTI%'        THEN 1 ELSE 0 END) as cuti
-                    ")
-                    ->whereYear('tanggal', $year)
-                    ->whereMonth('tanggal', $currentMonth);
+            $bulanRow = Absensi::selectRaw("
+                    SUM(CASE WHEN status LIKE '%TELAT%'       THEN 1 ELSE 0 END) as telat,
+                    SUM(CASE WHEN status LIKE '%SAKIT%'       THEN 1 ELSE 0 END) as sakit,
+                    SUM(CASE WHEN status LIKE '%IZIN%'        THEN 1 ELSE 0 END) as izin,
+                    SUM(CASE WHEN status LIKE '%TANPA KABAR%' THEN 1 ELSE 0 END) as tanpa_kabar,
+                    SUM(CASE WHEN status LIKE '%CUTI%'        THEN 1 ELSE 0 END) as cuti
+                ")
+                ->whereYear('tanggal', $year)
+                ->whereMonth('tanggal', $currentMonth)
+                ->where('soft_delete', 0); // ⬅️ TAMBAH INI
 
         $bulanRow = $this->applySiteFilter($bulanRow, $idSitusArray, $isAllSite)->first();
 
@@ -675,18 +663,18 @@ public function exportAbsensiReport(Request $request)
         $bulanTanpaKabar = (int) ($bulanRow->tanpa_kabar ?? 0);
         $bulanCuti       = (int) ($bulanRow->cuti ?? 0);
 
-        // DAILY
         $today      = Carbon::today();
         $todayLabel = $today->translatedFormat('d F Y');
 
         $dailyRow = Absensi::selectRaw("
-                        SUM(CASE WHEN status LIKE '%TELAT%'       THEN 1 ELSE 0 END) as telat,
-                        SUM(CASE WHEN status LIKE '%SAKIT%'       THEN 1 ELSE 0 END) as sakit,
-                        SUM(CASE WHEN status LIKE '%IZIN%'        THEN 1 ELSE 0 END) as izin,
-                        SUM(CASE WHEN status LIKE '%TANPA KABAR%' THEN 1 ELSE 0 END) as tanpa_kabar,
-                        SUM(CASE WHEN status LIKE '%CUTI%'        THEN 1 ELSE 0 END) as cuti
-                    ")
-                    ->whereDate('tanggal', $today);
+                SUM(CASE WHEN status LIKE '%TELAT%'       THEN 1 ELSE 0 END) as telat,
+                SUM(CASE WHEN status LIKE '%SAKIT%'       THEN 1 ELSE 0 END) as sakit,
+                SUM(CASE WHEN status LIKE '%IZIN%'        THEN 1 ELSE 0 END) as izin,
+                SUM(CASE WHEN status LIKE '%TANPA KABAR%' THEN 1 ELSE 0 END) as tanpa_kabar,
+                SUM(CASE WHEN status LIKE '%CUTI%'        THEN 1 ELSE 0 END) as cuti
+            ")
+            ->whereDate('tanggal', $today)
+            ->where('soft_delete', 0); // ⬅️ TAMBAH INI
 
         $dailyRow = $this->applySiteFilter($dailyRow, $idSitusArray, $isAllSite)->first();
 
@@ -696,7 +684,6 @@ public function exportAbsensiReport(Request $request)
         $dailyTanpaKabar = (int) ($dailyRow->tanpa_kabar ?? 0);
         $dailyCuti       = (int) ($dailyRow->cuti ?? 0);
 
-        // DIAGRAM SITUS (ikut parameter diagram_periode)
         $defaultDiagramPeriode = ($currentMonth <= 6) ? 1 : 2;
         $diagramPeriodeKe      = (int) $request->query('diagram_periode', $defaultDiagramPeriode);
 
@@ -740,25 +727,34 @@ public function exportAbsensiReport(Request $request)
         );
     }
 
-/**
- * Data untuk TAB 2 (perbandingan periode 1 & 2).
- */
     private function buildPerbandinganData(
         int $year,
         array $allMonths,
         array $idSitusArray,
         bool $isAllSite
     ): array {
-        // Periode 1: Jan–Jun
-        [$cmpLabels1, $cmpBulanNumbers1, $cmpTelat1, $cmpSakit1, $cmpIzin1, $cmpTanpa1, $cmpCuti1]
-            = $this->getPeriodeBarAggregates($year, 1, 6, $allMonths, $idSitusArray, $isAllSite);
+        [
+            $cmpLabels1,
+            $cmpBulanNumbers1,
+            $cmpTelat1,
+            $cmpSakit1,
+            $cmpIzin1,
+            $cmpTanpa1,
+            $cmpCuti1
+        ] = $this->getPeriodeBarAggregates($year, 1, 6, $allMonths, $idSitusArray, $isAllSite);
 
         [$cmpDiagramLabels1, $cmpDiagramTotals1, $cmpDiagramDetail1]
             = $this->getPeriodePieAggregates($year, 1, 6, $idSitusArray, $isAllSite);
 
-        // Periode 2: Jul–Des
-        [$cmpLabels2, $cmpBulanNumbers2, $cmpTelat2, $cmpSakit2, $cmpIzin2, $cmpTanpa2, $cmpCuti2]
-            = $this->getPeriodeBarAggregates($year, 7, 12, $allMonths, $idSitusArray, $isAllSite);
+        [
+            $cmpLabels2,
+            $cmpBulanNumbers2,
+            $cmpTelat2,
+            $cmpSakit2,
+            $cmpIzin2,
+            $cmpTanpa2,
+            $cmpCuti2
+        ] = $this->getPeriodeBarAggregates($year, 7, 12, $allMonths, $idSitusArray, $isAllSite);
 
         [$cmpDiagramLabels2, $cmpDiagramTotals2, $cmpDiagramDetail2]
             = $this->getPeriodePieAggregates($year, 7, 12, $idSitusArray, $isAllSite);
@@ -771,9 +767,6 @@ public function exportAbsensiReport(Request $request)
         );
     }
 
-/**
- * Helper umum: agregasi BAR per periode (bulan start–end).
- */
     private function getPeriodeBarAggregates(
         int $year,
         int $startMonth,
@@ -801,7 +794,7 @@ public function exportAbsensiReport(Request $request)
         $dataTanpaKabar = array_fill(0, $len, 0);
         $dataCuti       = array_fill(0, $len, 0);
 
-        $rows = Absensi::selectRaw("
+            $rows = Absensi::selectRaw("
                     YEAR(tanggal) as tahun,
                     MONTH(tanggal) as bulan,
                     SUM(CASE WHEN status LIKE '%TELAT%'       THEN 1 ELSE 0 END) as telat,
@@ -811,7 +804,8 @@ public function exportAbsensiReport(Request $request)
                     SUM(CASE WHEN status LIKE '%CUTI%'        THEN 1 ELSE 0 END) as cuti
                 ")
                 ->whereYear('tanggal', $year)
-                ->whereBetween(DB::raw('MONTH(tanggal)'), [$startMonth, $endMonth]);
+                ->whereBetween(DB::raw('MONTH(tanggal)'), [$startMonth, $endMonth])
+                ->where('soft_delete', 0); // ⬅️ TAMBAH INI
 
         $rows = $this->applySiteFilter($rows, $idSitusArray, $isAllSite)
                 ->groupBy('tahun','bulan')
@@ -820,7 +814,9 @@ public function exportAbsensiReport(Request $request)
                 ->get();
 
         foreach ($rows as $row) {
-            if (!isset($bulanMap[$row->bulan])) continue;
+            if (!isset($bulanMap[$row->bulan])) {
+                continue;
+            }
             $idx = $bulanMap[$row->bulan];
 
             $dataTelat[$idx]      = (int) $row->telat;
@@ -841,9 +837,6 @@ public function exportAbsensiReport(Request $request)
         ];
     }
 
-/**
- * Helper umum: agregasi PIE per periode (bulan start–end).
- */
     private function getPeriodePieAggregates(
         int $year,
         int $startMonth,
@@ -863,7 +856,8 @@ public function exportAbsensiReport(Request $request)
                 SUM(CASE WHEN a.status LIKE '%CUTI%'        THEN 1 ELSE 0 END) as cuti
             ")
             ->whereYear('a.tanggal', $year)
-            ->whereBetween(DB::raw('MONTH(a.tanggal)'), [$startMonth, $endMonth]);
+            ->whereBetween(DB::raw('MONTH(a.tanggal)'), [$startMonth, $endMonth])
+            ->where('a.soft_delete', 0); // ⬅️ TAMBAH INI
 
         $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
 
@@ -877,19 +871,18 @@ public function exportAbsensiReport(Request $request)
         $detail = [];
 
         foreach ($rows as $row) {
-            $nama        = $row->nama_situs;
-            $telat       = (int) $row->telat;
-            $sakit       = (int) $row->sakit;
-            $izin        = (int) $row->izin;
-            $tanpaKabar  = (int) $row->tanpa_kabar;
-            $cuti        = (int) $row->cuti;
+            $nama       = $row->nama_situs;
+            $telat      = (int) $row->telat;
+            $sakit      = (int) $row->sakit;
+            $izin       = (int) $row->izin;
+            $tanpaKabar = (int) $row->tanpa_kabar;
+            $cuti       = (int) $row->cuti;
 
             $total = $telat + $sakit + $izin + $tanpaKabar + $cuti;
 
             $labels[] = $nama;
             $totals[] = $total;
 
-            // 🔹 pakai key 'tanpa_kabar' supaya cocok dengan JS
             $detail[$nama] = [
                 'telat'       => $telat,
                 'sakit'       => $sakit,
@@ -901,190 +894,187 @@ public function exportAbsensiReport(Request $request)
 
         return [$labels, $totals, $detail];
     }
-    
 
-public function grafikDetailAbsensi(Request $request)
-{
-    if ($resp = $this->ensureHrdAccess()) {
-        return $resp;
+    /* ==========================
+     * GRAFIK DETAIL (MODAL)
+     * ========================== */
+
+    public function grafikDetailAbsensi(Request $request)
+    {
+        if ($resp = $this->ensureHrdAccess()) {
+            return $resp;
+        }
+
+        $status = $request->get('status');
+        $bulan  = (int) $request->get('bulan');
+        $year   = now()->year;
+
+        [, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
+
+        $query = Absensi::from('tbhs_absensi as a')
+            ->leftJoin('tbhs_situs as s', function ($join) {
+                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+            })
+            ->whereYear('a.tanggal', $year)
+            ->whereMonth('a.tanggal', $bulan)
+            ->where('a.soft_delete', 0); // ⬅️ TAMBAH INI
+
+        if ($status) {
+            $query->where('a.status', 'LIKE', "%{$status}%");
+        }
+
+        $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
+
+        $rows = $query
+            ->groupBy(
+                'a.id',
+                'a.id_admin',
+                'a.nama_staff',
+                'a.id_situs',
+                'a.tanggal',
+                'a.status',
+                'a.remarks',
+                'a.cuti_start',
+                'a.cuti_end'
+            )
+            ->selectRaw('
+                a.id,
+                a.id_admin,
+                a.nama_staff,
+                a.id_situs,
+                a.tanggal,
+                a.status,
+                a.remarks,
+                a.cuti_start,
+                a.cuti_end,
+                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+            ')
+            ->orderBy('a.tanggal', 'desc')
+            ->get();
+
+        return response()->json(['data' => $rows]);
     }
 
-    $status = $request->get('status');        // TELAT | SAKIT | IZIN | TANPA KABAR | CUTI
-    $bulan  = (int) $request->get('bulan');   // 1..12
-    $year   = now()->year;
+    public function grafikDetailSitus(Request $request)
+    {
+        if ($resp = $this->ensureHrdAccess()) {
+            return $resp;
+        }
 
-    [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
+        $namaSitus = $request->get('situs');
+        $year      = now()->year;
 
-    $query = Absensi::from('tbhs_absensi as a')
-        ->leftJoin('tbhs_situs as s', function ($join) {
-            // 🔹 sekarang pakai a.id_situs (varchar "4,34", dst.)
-            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
-        })
-        ->whereYear('a.tanggal', $year)
-        ->whereMonth('a.tanggal', $bulan);
+        [, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
 
-    if ($status) {
-        $query->where('a.status', 'LIKE', "%{$status}%");
+        $now          = Carbon::now();
+        $currentMonth = $now->month;
+        $startMonth   = ($currentMonth <= 6) ? 1 : 7;
+        $endMonth     = $startMonth + 5;
+
+        $query = Absensi::from('tbhs_absensi as a')
+            ->leftJoin('tbhs_situs as s', function ($join) {
+                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+            })
+            ->whereYear('a.tanggal', $year)
+            ->whereBetween(DB::raw('MONTH(a.tanggal)'), [$startMonth, $endMonth])
+            ->where('a.soft_delete', 0); // ⬅️ TAMBAH INI
+
+        if ($namaSitus) {
+            $query->where('s.nama_situs', $namaSitus);
+        }
+
+        $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
+
+        $rows = $query
+            ->groupBy(
+                'a.id',
+                'a.id_admin',
+                'a.nama_staff',
+                'a.tanggal',
+                'a.status',
+                'a.remarks',
+                'a.cuti_start',
+                'a.cuti_end'
+            )
+            ->selectRaw('
+                a.id,
+                a.id_admin,
+                a.nama_staff,
+                a.tanggal,
+                a.status,
+                a.remarks,
+                a.cuti_start,
+                a.cuti_end,
+                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+            ')
+            ->orderBy('a.tanggal', 'desc')
+            ->get();
+
+        return response()->json(['data' => $rows]);
     }
 
-    // kalau mau tetap pakai filter site, sementara biarkan dulu:
-    $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
+    public function grafikDailyDetail(Request $request)
+    {
+        if ($resp = $this->ensureHrdAccess()) {
+            return $resp;
+        }
 
-    $rows = $query
-        ->groupBy(
-            'a.id',
-            'a.id_admin',
-            'a.nama_staff',
-            'a.id_situs',
-            'a.tanggal',
-            'a.status',
-            'a.remarks'
-            // 🔹 tidak perlu lagi groupBy u.id_situs
-        )
-        ->selectRaw('
-            a.id,
-            a.id_admin,
-            a.nama_staff,
-            a.id_situs,
-            a.tanggal,
-            a.status,
-            a.remarks,
-            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
-        ')
-        ->orderBy('a.tanggal', 'desc')
-        ->get();
+        $status = $request->get('status');
+        $today  = Carbon::today();
 
-    return response()->json([
-        'data' => $rows,
-    ]);
-}
+        [, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
 
+        $query = Absensi::from('tbhs_absensi as a')
+            ->leftJoin('tbhs_situs as s', function ($join) {
+                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+            })
+            ->whereDate('a.tanggal', $today)
+            ->where('a.soft_delete', 0); // ⬅️ TAMBAH INI
 
-public function grafikDetailSitus(Request $request)
-{
-    if ($resp = $this->ensureHrdAccess()) {
-        return $resp;
+        if ($status) {
+            $query->where('a.status', 'LIKE', "%{$status}%");
+        }
+
+        $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
+
+        $rows = $query
+            ->groupBy(
+                'a.id',
+                'a.id_admin',
+                'a.nama_staff',
+                'a.tanggal',
+                'a.status',
+                'a.remarks',
+                'a.cuti_start',
+                'a.cuti_end'
+            )
+            ->selectRaw('
+                a.id,
+                a.id_admin,
+                a.nama_staff,
+                a.tanggal,
+                a.status,
+                a.remarks,
+                a.cuti_start,
+                a.cuti_end,
+                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+            ')
+            ->orderBy('a.tanggal', 'desc')
+            ->get();
+
+        return response()->json(['data' => $rows]);
     }
 
-    $namaSitus = $request->get('situs');
-    $year      = now()->year;
-
-    [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
-
-    $now          = Carbon::now();
-    $currentMonth = $now->month;
-    $startMonth   = ($currentMonth <= 6) ? 1 : 7;
-    $endMonth     = $startMonth + 5;
-
-    $query = Absensi::from('tbhs_absensi as a')
-        ->leftJoin('tbhs_situs as s', function ($join) {
-            // 🔹 pakai a.id_situs, bukan u.id_situs
-            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
-        })
-        ->whereYear('a.tanggal', $year)
-        ->whereBetween(DB::raw('MONTH(a.tanggal)'), [$startMonth, $endMonth]);
-
-    if ($namaSitus) {
-        // filter berdasarkan nama_situs hasil join
-        $query->where('s.nama_situs', $namaSitus);
-    }
-
-    $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
-
-    $rows = $query
-        ->groupBy(
-            'a.id',
-            'a.id_admin',
-            'a.nama_staff',
-            'a.tanggal',
-            'a.status',
-            'a.remarks'
-        )
-        ->selectRaw('
-            a.id,
-            a.id_admin,
-            a.nama_staff,
-            a.tanggal,
-            a.status,
-            a.remarks,
-            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
-        ')
-        ->orderBy('a.tanggal', 'desc')
-        ->get();
-
-    return response()->json([
-        'data' => $rows,
-    ]);
-}
-
-
-
-public function grafikDailyDetail(Request $request)
-{
-    if ($resp = $this->ensureHrdAccess()) {
-        return $resp;
-    }
-
-    $status = $request->get('status');
-    $today  = Carbon::today();
-
-    [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
-
-    $query = Absensi::from('tbhs_absensi as a')
-        ->leftJoin('tbhs_situs as s', function ($join) {
-            // 🔹 lagi-lagi pakai a.id_situs (varchar "4,34")
-            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
-        })
-        ->whereDate('a.tanggal', $today);
-
-    if ($status) {
-        $query->where('a.status', 'LIKE', "%{$status}%");
-    }
-
-    $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
-
-    $rows = $query
-        ->groupBy(
-            'a.id',
-            'a.id_admin',
-            'a.nama_staff',
-            'a.tanggal',
-            'a.status',
-            'a.remarks'
-        )
-        ->selectRaw('
-            a.id,
-            a.id_admin,
-            a.nama_staff,
-            a.tanggal,
-            a.status,
-            a.remarks,
-            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
-        ')
-        ->orderBy('a.tanggal', 'desc')
-        ->get();
-
-    return response()->json([
-        'data' => $rows,
-    ]);
-}
-
-    
     public function grafikCompareData(Request $request)
     {
         if ($resp = $this->ensureHrdAccess()) {
             return $resp;
         }
 
-        [$namaSitusLogin, $idSitusArray, $isAllSite, $userLogin] = $this->resolveUserSiteScope();
+        [, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
 
-        $year = (int) $request->query('year', now()->year);
-
-        $allMonths = [
-            null,
-            'Januari','Februari','Maret','April','Mei','Juni',
-            'Juli','Agustus','September','Oktober','November','Desember',
-        ];
+        $year      = (int) $request->query('year', now()->year);
+        $allMonths = $this->monthNames();
 
         $compareData = $this->buildPerbandinganData(
             $year,
@@ -1093,46 +1083,6 @@ public function grafikDailyDetail(Request $request)
             $isAllSite
         );
 
-        return response()->json($compareData);   // berisi cmpLabels1, cmpTelat1, dst
+        return response()->json($compareData);
     }
-
-
-    public function detailAbsensi(Request $request)
-    {
-        $request->validate([
-            'id_admin' => 'required',
-        ]);
-
-        $absensi = Absensi::from('tbhs_absensi as a')
-            // kalau nggak butuh kolom dari users, join ini bisa dihapus
-            // ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
-            ->leftJoin('tbhs_situs as s', function ($join) {
-                // s.id dicari di dalam string a.id_situs (misal: "4,34")
-                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
-            })
-            ->where('a.id_admin', $request->id_admin)
-            ->orderBy('a.tanggal', 'desc')
-            ->orderBy('a.id', 'desc')
-            ->groupBy(
-                'a.id',
-                'a.id_admin',
-                'a.tanggal',
-                'a.status',
-                'a.remarks',
-                'a.id_situs'
-            )
-            ->selectRaw('
-                a.id,
-                a.id_admin,
-                a.tanggal,
-                a.status,
-                a.remarks,
-                a.id_situs,
-                GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
-            ')
-            ->get();
-
-        return response()->json($absensi);
-    }
-
 }

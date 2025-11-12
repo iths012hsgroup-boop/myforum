@@ -174,17 +174,18 @@ class AuditformController extends Controller
                 $startDate = $currentMonth->copy()->startOfMonth();
                 $endDate   = $currentMonth->copy()->endOfMonth();
 
-                $rawAbsensi = Absensi::where('id_admin', $user->id_admin)
-                    ->where(function ($q) use ($startDate, $endDate) {
-                        $q->whereBetween('tanggal', [$startDate, $endDate])
-                        ->orWhere(function ($q2) use ($startDate, $endDate) {
-                            $q2->whereNotNull('cuti_start')
-                                ->whereNotNull('cuti_end')
-                                ->whereDate('cuti_start', '<=', $endDate)
-                                ->whereDate('cuti_end', '>=', $startDate);
-                        });
-                    })
-                    ->get();
+            $rawAbsensi = Absensi::where('id_admin', $user->id_admin)
+                ->where('soft_delete', 0)   // ⬅️ hanya ambil yang belum dihapus
+                ->where(function ($q) use ($startDate, $endDate) {
+                    $q->whereBetween('tanggal', [$startDate, $endDate])
+                    ->orWhere(function ($q2) use ($startDate, $endDate) {
+                        $q2->whereNotNull('cuti_start')
+                            ->whereNotNull('cuti_end')
+                            ->whereDate('cuti_start', '<=', $endDate)
+                            ->whereDate('cuti_end', '>=', $startDate);
+                    });
+                })
+                ->get();
 
                 $absensi = [];
 
@@ -438,6 +439,7 @@ class AuditformController extends Controller
                     $q->orWhereRaw('FIND_IN_SET(?, a.id_situs) > 0', [$id]);
                 }
             })
+            ->where('a.soft_delete', 0)  // ⬅️ hanya ambil yang belum dihapus
             ->groupBy(
                 'a.id',
                 'a.id_admin',
@@ -445,7 +447,9 @@ class AuditformController extends Controller
                 'a.tanggal',
                 'a.status',
                 'a.remarks',
-                'a.id_situs'   // ⬅ cukup sampai sini
+                'a.id_situs',
+                'a.cuti_start',
+                'a.cuti_end'
             )
             ->selectRaw('
                 a.id,
@@ -454,6 +458,8 @@ class AuditformController extends Controller
                 a.tanggal,
                 a.status,
                 a.remarks,
+                a.cuti_start,
+                a.cuti_end,
                 GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
             ')
             ->orderByDesc('a.tanggal')
