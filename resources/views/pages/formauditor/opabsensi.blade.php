@@ -214,13 +214,14 @@
 
 
 @push('scripts')
+
 <script>
 $(function () {
     // ================== KONSTAN & ELEMEN ==================
     const routes = {
         staff : '{{ route('opforum.opabsensi.staff') }}',
         detail: '{{ route('opforum.opabsensi.detail') }}',
-        save  : '{{ route('hrdmanagement.absensi.save') }}', // ⬅ ini
+        save  : '{{ route('hrdmanagement.absensi.save') }}',
     };
 
     const $staffSection    = $('#staffSection');
@@ -272,7 +273,6 @@ $(function () {
 
         $staffContainer.html(html);
 
-        // reset scroll horizontal nama
         $staffContainer.find('.staff-pill-name').each(function () {
             this.scrollLeft = 0;
         });
@@ -341,6 +341,11 @@ $(function () {
             error(xhr) {
                 console.log(xhr.responseText);
                 $staffContainer.html('<p class="text-danger mb-0">Gagal memuat data staff.</p>');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal',
+                    text: 'Gagal memuat data staff dari server.',
+                });
             }
         });
     }
@@ -355,7 +360,6 @@ $(function () {
         $('#cutiDateRangeWrapper').hide();
         $('#cuti_start, #cuti_end').val('');
 
-        // JANGAN di-split, kirim apa adanya: "4,34"
         const allSiteIds = (idSitusRaw || '').toString().trim();
 
         $('#new_modal_id_admin').text(idAdmin);
@@ -363,7 +367,7 @@ $(function () {
 
         $('#new_form_id_admin').val(idAdmin);
         $('#new_form_nama_staff').val(namaStaff);
-        $('#new_form_id_situs').val(allSiteIds);   // <<< SEKARANG "4,34"
+        $('#new_form_id_situs').val(allSiteIds);
 
         const today = new Date().toISOString().slice(0, 10);
         $('#new_form_tanggal').val(today);
@@ -376,7 +380,7 @@ $(function () {
     // ================== SUBMIT NEW ABSENSI VIA AJAX (OP ABSENSI) ==================
     if ($newForm.length) {
         $newForm.on('submit', function (e) {
-            e.preventDefault(); // cegah reload
+            e.preventDefault();
 
             $.ajax({
                 url   : routes.save,
@@ -392,7 +396,6 @@ $(function () {
                         $('#cuti_start, #cuti_end').val('');
                         $('#newAbsensiModal').modal('hide');
 
-                        // 🔹 paksa tetap di tab OP ABSENSI
                         $('#hsforumTabs a[href="#cases"]').tab('show');
                     } else {
                         showPopup('error', (res && res.message) || 'Gagal menyimpan absensi.');
@@ -409,7 +412,11 @@ $(function () {
     // ================== HELPER: LOAD DETAIL ABSENSI PER SITUS ==================
     function loadDetailAbsensi(ids, siteName) {
         if (!ids.length) {
-            alert('Silakan pilih situs terlebih dahulu.');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Pilih situs dulu',
+                text: 'Silakan pilih minimal satu situs sebelum melihat detail absensi.',
+            });
             return;
         }
 
@@ -431,6 +438,11 @@ $(function () {
                 console.log(xhr.responseText);
                 fillDetailTable([]);
                 $detailModal.modal('show');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal',
+                    text: 'Terjadi kesalahan saat memuat detail absensi.',
+                });
             }
         });
     }
@@ -474,25 +486,16 @@ $(function () {
 
 });
 
-
-    // ================== POPUP NOTIFIKASI ==================
-    function showPopup(type, message) {
-        const $header = $('#notifModalHeader');
-        const $title  = $('#notifModalTitle');
-        const $body   = $('#notifModalBody');
-
-        if (type === 'success') {
-            $header.removeClass('bg-danger').addClass('bg-success');
-            $title.text('Berhasil');
-        } else {
-            $header.removeClass('bg-success').addClass('bg-danger');
-            $title.text('Gagal');
-        }
-
-        $body.text(message || '');
-        $('#notifModal').modal('show');
-    }
+// ================== POPUP NOTIFIKASI (SweetAlert) ==================
+function showPopup(type, message) {
+    Swal.fire({
+        icon: type === 'success' ? 'success' : 'error',
+        title: type === 'success' ? 'Berhasil' : 'Gagal',
+        text: message || '',
+    });
+}
 </script>
 @endpush
+
 
 

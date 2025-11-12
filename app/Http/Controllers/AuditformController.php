@@ -416,7 +416,7 @@ public function opabsensiDetail(Request $request)
         return response()->json([]);
     }
 
-    // Normalisasi ke array angka
+    // Normalisasi ke array
     if (!is_array($ids)) {
         // misal: "4,34" → ["4","34"]
         $ids = explode(',', $ids);
@@ -428,12 +428,16 @@ public function opabsensiDetail(Request $request)
     }
 
     $rows = Absensi::from('tbhs_absensi as a')
-        ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
         ->leftJoin('tbhs_situs as s', function ($join) {
-            // s.id dicari di string u.id_situs (misal "4,34")
-            $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
+            // sekarang pakai a.id_situs (varchar: "4,34")
+            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
         })
-        ->whereIn('a.id_situs', $ids) // filter absensi berdasarkan situs yg dipilih di frontend
+        // filter absensi berdasarkan situs yg dipilih di frontend
+        ->where(function ($q) use ($ids) {
+            foreach ($ids as $id) {
+                $q->orWhereRaw('FIND_IN_SET(?, a.id_situs) > 0', [$id]);
+            }
+        })
         ->groupBy(
             'a.id',
             'a.id_admin',
@@ -441,7 +445,7 @@ public function opabsensiDetail(Request $request)
             'a.tanggal',
             'a.status',
             'a.remarks',
-            'u.id_situs'
+            'a.id_situs'   // ⬅ cukup sampai sini
         )
         ->selectRaw('
             a.id,
@@ -450,14 +454,18 @@ public function opabsensiDetail(Request $request)
             a.tanggal,
             a.status,
             a.remarks,
-            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+            GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
         ')
         ->orderByDesc('a.tanggal')
         ->orderBy('a.id')
         ->get();
 
+    // boleh kembalikan langsung array atau dibungkus data, dua-duanya didukung JS kamu
     return response()->json($rows);
+    // atau:
+    // return response()->json(['data' => $rows]);
 }
+
 
 
     public function new(Request $request)

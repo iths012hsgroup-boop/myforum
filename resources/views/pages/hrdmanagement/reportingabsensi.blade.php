@@ -108,16 +108,19 @@ $(function () {
             data: function (d) {
                 const tahun     = $tahun.val();
                 const periodeKe = $periodeKe.val();
-                const idSitus   = $situs.val();
+                const situsVals = $situs.val(); // single select => string atau null
 
-                d.id_situs = idSitus || '';
-                d.tahun    = tahun   || '';
+                d.tahun = tahun || '';
 
-                // jika pilih periode 1/2 → kirim periode "YYYY-1"/"YYYY-2"
+                if (situsVals) {
+                    d.id_situs = [situsVals];   // kirim sebagai array: ["3"]
+                } else {
+                    d.id_situs = [];
+                }
+
                 if (tahun && periodeKe) {
                     d.periode = `${tahun}-${periodeKe}`;
                 }
-                // kalau periode kosong → backend pakai tahun saja (semua periode)
             }
         },
         columns: [
@@ -166,7 +169,7 @@ $(function () {
         table.ajax.reload();
     });
 
-    // ================== GENERATE REPORT ==================
+    // ================== GENERATE REPORT (SweetAlert) ==================
     function callGenerate(periodeStr, callback) {
         $.ajax({
             url   : routes.generate,
@@ -181,7 +184,11 @@ $(function () {
             },
             error(xhr) {
                 console.error('SERVER ERROR:', xhr.responseText);
-                alert('Terjadi kesalahan di server untuk periode ' + periodeStr);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal',
+                    text: 'Terjadi kesalahan di server untuk periode ' + periodeStr,
+                });
             }
         });
     }
@@ -191,7 +198,11 @@ $(function () {
         const periodeKe = $periodeKe.val(); // '' / '1' / '2'
 
         if (!tahun) {
-            alert('Tahun wajib diisi.');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Tahun wajib diisi',
+                text: 'Silakan isi tahun terlebih dahulu sebelum generate report.',
+            });
             return;
         }
 
@@ -200,9 +211,16 @@ $(function () {
             const periode1 = `${tahun}-1`;
             const periode2 = `${tahun}-2`;
 
-            callGenerate(periode1, function () {
-                callGenerate(periode2, function () {
-                    alert('Generate report periode 1 dan 2 selesai.');
+            callGenerate(periode1, function (res1) {
+                callGenerate(periode2, function (res2) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Generate selesai',
+                        html: `
+                            Periode 1: ${(res1 && res1.message) || 'OK'}<br>
+                            Periode 2: ${(res2 && res2.message) || 'OK'}
+                        `,
+                    });
                     table.ajax.reload();
                 });
             });
@@ -214,22 +232,34 @@ $(function () {
 
         callGenerate(periode, function (res) {
             if (res && res.success) {
-                alert((res.message || 'Generate selesai.') + ' Total baris: ' + res.total);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil',
+                    text: (res.message || 'Generate selesai.') + ' Total baris: ' + res.total,
+                });
             } else {
-                alert((res && res.message) || 'Gagal generate report.');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal',
+                    text: (res && res.message) || 'Gagal generate report.',
+                });
             }
             table.ajax.reload();
         });
     });
 
-    // ================== EXPORT EXCEL ==================
+    // ================== EXPORT EXCEL (SweetAlert confirm) ==================
     $btnExport.on('click', function () {
         const tahun     = $tahun.val();
         const periodeKe = $periodeKe.val(); // bisa kosong
-        const idSitus   = $situs.val();     // bisa kosong
+        const situsVal  = $situs.val();     // single value
 
         if (!tahun) {
-            alert('Tahun wajib diisi.');
+            Swal.fire({
+                icon: 'warning',
+                title: 'Tahun wajib diisi',
+                text: 'Silakan isi tahun terlebih dahulu sebelum export.',
+            });
             return;
         }
 
@@ -239,12 +269,36 @@ $(function () {
         if (periodeKe) {
             url.searchParams.set('periode_ke', periodeKe);
         }
-        if (idSitus) {
-            url.searchParams.set('id_situs', idSitus);
+        if (situsVal) {
+            url.searchParams.set('id_situs', situsVal);
         }
 
-        window.location.href = url.toString();
+        const keteranganPeriode = periodeKe
+            ? (periodeKe === '1' ? 'Periode 1 (Jan–Jun)' : 'Periode 2 (Jul–Des)')
+            : 'Semua Periode';
+
+        const keteranganSitus = situsVal
+            ? $('#gen_situs option:selected').text()
+            : 'Semua Situs';
+
+        Swal.fire({
+            icon: 'question',
+            title: 'Export Excel?',
+            html: `
+                Tahun: <b>${tahun}</b><br>
+                Periode: <b>${keteranganPeriode}</b><br>
+                Situs: <b>${keteranganSitus}</b>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Ya, export sekarang',
+            cancelButtonText: 'Batal',
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = url.toString();
+            }
+        });
     });
 });
 </script>
 @endpush
+

@@ -2,7 +2,6 @@
 
 namespace App\Exports;
 
-use App\Models\AbsensiReport;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -11,29 +10,35 @@ class AbsensiReportExport implements FromCollection, WithHeadings
 {
     protected $tahun;
     protected $periode;
-    protected $idSitus;
+    protected $idSitusList; // <- array|null
 
-    public function __construct($tahun, $periode = null, $idSitus = null)
+    public function __construct($tahun, $periode = null, $idSitusList = null)
     {
-        $this->tahun   = $tahun;
-        $this->periode = $periode;   // "2025-1" atau null
-        $this->idSitus = $idSitus;   // int atau null
+        $this->tahun       = $tahun;
+        $this->periode     = $periode;     // "2025-1" atau null
+        $this->idSitusList = $idSitusList; // ['4','34'] atau null
     }
 
     public function collection()
     {
         $query = DB::table('tbhs_absensireport as r')
-            ->join('tbhs_users as u', 'u.id_admin', '=', 'r.id_admin')
             ->leftJoin('tbhs_situs as s', function ($join) {
-                $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
+                // r.id_situs bisa "4,34"
+                $join->on(DB::raw('FIND_IN_SET(s.id, r.id_situs)'), '>', DB::raw('0'));
             })
-            ->when($this->idSitus, function ($q) {
-                $q->where('r.id_situs', $this->idSitus);
+            ->when($this->idSitusList, function ($q) {
+                $ids = $this->idSitusList;
+
+                $q->where(function ($sub) use ($ids) {
+                    foreach ($ids as $id) {
+                        // r.id_situs LIKE "4,34" → cocokan per-id
+                        $sub->orWhereRaw('FIND_IN_SET(?, r.id_situs)', [$id]);
+                    }
+                });
             })
             ->when($this->periode, function ($q) {
                 $q->where('r.periode', $this->periode);
             }, function ($q) {
-                // kalau periode null, filter semua periode di tahun tsb
                 $q->where('r.periode', 'like', $this->tahun.'-%');
             })
             ->groupBy(
@@ -82,5 +87,4 @@ class AbsensiReportExport implements FromCollection, WithHeadings
         ];
     }
 }
-
 

@@ -235,16 +235,16 @@ class HrdManagementController extends Controller
         $lastWeek = $today->copy()->subDays(6);
 
         $absensi = Absensi::from('tbhs_absensi as a')
-            ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
+            // join users optional, kalau nggak dipakai bisa dihapus
+            // ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
             ->leftJoin('tbhs_situs as s', function ($join) {
-                // s.id dicocokkan ke string u.id_situs, misal "4,34"
-                $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
+                // pakai kolom a.id_situs (varchar "4,34")
+                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
             })
             ->where('a.id_admin', $request->id_admin)
-            // kalau masih mau filter by id_situs tertentu:
             ->when($request->filled('id_situs'), function ($q) use ($request) {
-                // filter di level absensi (a.id_situs)
-                $q->where('a.id_situs', $request->id_situs);
+                // filter berdasarkan id_situs yang disimpan di tbhs_absensi
+                $q->where('a.id_situs', 'LIKE', '%'.$request->id_situs.'%');
             })
             ->whereBetween('a.tanggal', [$lastWeek, $today])
             ->orderBy('a.tanggal', 'desc')
@@ -257,8 +257,7 @@ class HrdManagementController extends Controller
                 'a.remarks',
                 'a.id_situs',
                 'a.cuti_start',
-                'a.cuti_end',
-                'u.id_situs'
+                'a.cuti_end'
             )
             ->selectRaw('
                 a.id,
@@ -269,12 +268,13 @@ class HrdManagementController extends Controller
                 a.id_situs,
                 a.cuti_start,
                 a.cuti_end,
-                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+                GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
             ')
             ->get();
 
         return response()->json($absensi);
     }
+
 
     public function destroyAbsensi($id)
         {
@@ -370,60 +370,72 @@ class HrdManagementController extends Controller
     }
     
 
-    public function getReportingAbsensiData(Request $request)
-    {
-        $idSitus = $request->input('id_situs');
-        $periode = $request->input('periode');   // "2025-1" atau "2025-2" atau null
-        $tahun   = $request->input('tahun');     // "2025" atau null
+public function getReportingAbsensiData(Request $request)
+{
+    $idSitusInput = $request->input('id_situs'); // bisa array / string / null
+    $periode      = $request->input('periode');
+    $tahun        = $request->input('tahun');
 
-        $rows = DB::table('tbhs_absensireport as r')
-            ->join('tbhs_users as u', 'u.id_admin', '=', 'r.id_admin')
-            ->leftJoin('tbhs_situs as s', function ($join) {
-                // u.id_situs bisa "4,34" → cocokan s.id satu per satu
-                $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
-            })
-            ->when($idSitus, function ($q) use ($idSitus) {
-                $q->where('r.id_situs', $idSitus);
-            })
-            ->when($periode, function ($q) use ($periode) {
-                $q->where('r.periode', $periode);
-            })
-            ->when(!$periode && $tahun, function ($q) use ($tahun) {
-                $q->where('r.periode', 'like', $tahun.'-%');
-            })
-            ->groupBy(
-                'r.id',
-                'r.id_admin',
-                'r.nama_staff',
-                'r.id_situs',
-                'r.periode',
-                'r.sakit',
-                'r.izin',
-                'r.telat',
-                'r.tanpa_kabar',
-                'r.cuti',
-                'r.total_absensi'
-            )
-            ->selectRaw("
-                r.id,
-                r.id_admin,
-                r.nama_staff,
-                r.id_situs,
-                GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ', ') AS nama_situs,
-                r.periode,
-                r.sakit,
-                r.izin,
-                r.telat,
-                r.tanpa_kabar,
-                r.cuti,
-                r.total_absensi
-            ")
-            ->get();
-
-        return response()->json([
-            'data' => $rows,
-        ]);
+    // normalisasi ke array id: [3,34]
+    $ids = [];
+    if (is_array($idSitusInput)) {
+        $ids = array_filter($idSitusInput);
+    } elseif (!empty($idSitusInput)) {
+        $ids = array_filter(explode(',', $idSitusInput));
     }
+
+    $rows = DB::table('tbhs_absensireport as r')
+        ->leftJoin('tbhs_situs as s', function ($join) {
+            $join->on(DB::raw('FIND_IN_SET(s.id, r.id_situs)'), '>', DB::raw('0'));
+        })
+        ->when($ids, function ($q) use ($ids) {
+            // r.id_situs bisa "3,34" → cocokkan salah satu id di dalamnya
+            $q->where(function ($sub) use ($ids) {
+                foreach ($ids as $id) {
+                    $sub->orWhereRaw('FIND_IN_SET(?, r.id_situs)', [$id]);
+                }
+            });
+        })
+        ->when($periode, function ($q) use ($periode) {
+            $q->where('r.periode', $periode);
+        })
+        ->when(!$periode && $tahun, function ($q) use ($tahun) {
+            $q->where('r.periode', 'like', $tahun.'-%');
+        })
+        ->groupBy(
+            'r.id',
+            'r.id_admin',
+            'r.nama_staff',
+            'r.id_situs',
+            'r.periode',
+            'r.sakit',
+            'r.izin',
+            'r.telat',
+            'r.tanpa_kabar',
+            'r.cuti',
+            'r.total_absensi'
+        )
+        ->selectRaw("
+            r.id,
+            r.id_admin,
+            r.nama_staff,
+            r.id_situs,
+            GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ', ') AS nama_situs,
+            r.periode,
+            r.sakit,
+            r.izin,
+            r.telat,
+            r.tanpa_kabar,
+            r.cuti,
+            r.total_absensi
+        ")
+        ->get();
+
+    return response()->json([
+        'data' => $rows,
+    ]);
+}
+
 
 
 
@@ -514,30 +526,40 @@ class HrdManagementController extends Controller
     }
 
 
-    public function exportAbsensiReport(Request $request)
-    {
-        $request->validate([
-            'tahun'      => 'required|integer',
-            'periode_ke' => 'nullable|in:1,2',
-            'id_situs'   => 'nullable|integer',
-        ]);
+public function exportAbsensiReport(Request $request)
+{
+    $request->validate([
+        'tahun'      => 'required|integer',
+        'periode_ke' => 'nullable|in:1,2',
+        // id_situs sekarang bisa "4,34" → string, bukan integer
+        'id_situs'   => 'nullable|string',
+    ]);
 
-        $tahun     = (string) $request->query('tahun');
-        $periodeKe = $request->query('periode_ke'); // '1' / '2' / null
-        $idSitus   = $request->query('id_situs');   // int / null
+    $tahun     = (string) $request->query('tahun');
+    $periodeKe = $request->query('periode_ke'); // '1' / '2' / null
+    $idSitus   = $request->query('id_situs');   // "4,34" / null
 
-        $periode = $periodeKe ? ($tahun . '-' . $periodeKe) : null;
-
-        $suffixPeriode = $periodeKe ? ('_periode_'.$periodeKe) : '_all_periode';
-        $suffixSitus   = $idSitus   ? ('_situs_'.$idSitus)    : '_all_situs';
-
-        $fileName = 'report_absensi_' . $tahun . $suffixPeriode . $suffixSitus . '.xlsx';
-
-        return Excel::download(
-            new AbsensiReportExport($tahun, $periode, $idSitus ? (int)$idSitus : null),
-            $fileName
-        );
+    // normalisasi ke array ID, misal "4,34" → ['4','34']
+    $idSitusList = [];
+    if (!empty($idSitus)) {
+        $idSitusList = array_filter(array_map('trim', explode(',', $idSitus)));
     }
+
+    $periode = $periodeKe ? ($tahun . '-' . $periodeKe) : null;
+
+    $suffixPeriode = $periodeKe ? ('_periode_'.$periodeKe) : '_all_periode';
+    $suffixSitus   = $idSitusList
+        ? ('_situs_'.implode('_', $idSitusList))  // contoh: _situs_4_34
+        : '_all_situs';
+
+    $fileName = 'report_absensi_' . $tahun . $suffixPeriode . $suffixSitus . '.xlsx';
+
+    return Excel::download(
+        // kirim ARRAY id situs ke export
+        new AbsensiReportExport($tahun, $periode, $idSitusList ?: null),
+        $fileName
+    );
+}
 
 
     public function grafik(Request $request)
@@ -881,172 +903,172 @@ class HrdManagementController extends Controller
     }
     
 
-    public function grafikDetailAbsensi(Request $request)
-    {
-        if ($resp = $this->ensureHrdAccess()) {
-            return $resp;
-        }
-
-        $status = $request->get('status');        // TELAT | SAKIT | IZIN | TANPA KABAR | CUTI
-        $bulan  = (int) $request->get('bulan');   // 1..12
-        $year   = now()->year;
-
-        [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
-
-        $query = Absensi::from('tbhs_absensi as a')
-            ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
-            ->leftJoin('tbhs_situs as s', function ($join) {
-                // s.id dicari di string u.id_situs (misal "4,34")
-                $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
-            })
-            ->whereYear('a.tanggal', $year)
-            ->whereMonth('a.tanggal', $bulan);
-
-        if ($status) {
-            $query->where('a.status', 'LIKE', "%{$status}%");
-        }
-
-        // tetap pakai filter site berdasarkan a.id_situs (integer)
-        $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
-
-        $rows = $query
-            ->groupBy(
-                'a.id',
-                'a.id_admin',
-                'a.nama_staff',
-                'a.id_situs',
-                'a.tanggal',
-                'a.status',
-                'a.remarks',
-                'u.id_situs'
-            )
-            ->selectRaw('
-                a.id,
-                a.id_admin,
-                a.nama_staff,
-                a.id_situs,
-                a.tanggal,
-                a.status,
-                a.remarks,
-                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
-            ')
-            ->orderBy('a.tanggal', 'desc')
-            ->get();
-
-        return response()->json([
-            'data' => $rows,
-        ]);
+public function grafikDetailAbsensi(Request $request)
+{
+    if ($resp = $this->ensureHrdAccess()) {
+        return $resp;
     }
 
-    public function grafikDetailSitus(Request $request)
-    {
-        if ($resp = $this->ensureHrdAccess()) {
-            return $resp;
-        }
+    $status = $request->get('status');        // TELAT | SAKIT | IZIN | TANPA KABAR | CUTI
+    $bulan  = (int) $request->get('bulan');   // 1..12
+    $year   = now()->year;
 
-        $namaSitus = $request->get('situs');
-        $year      = now()->year;
+    [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
 
-        [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
+    $query = Absensi::from('tbhs_absensi as a')
+        ->leftJoin('tbhs_situs as s', function ($join) {
+            // 🔹 sekarang pakai a.id_situs (varchar "4,34", dst.)
+            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+        })
+        ->whereYear('a.tanggal', $year)
+        ->whereMonth('a.tanggal', $bulan);
 
-        $now          = Carbon::now();
-        $currentMonth = $now->month;
-        $startMonth   = ($currentMonth <= 6) ? 1 : 7;
-        $endMonth     = $startMonth + 5;
-
-        $query = Absensi::from('tbhs_absensi as a')
-            ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
-            ->leftJoin('tbhs_situs as s', function ($join) {
-                $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
-            })
-            ->whereYear('a.tanggal', $year)
-            ->whereBetween(DB::raw('MONTH(a.tanggal)'), [$startMonth, $endMonth]);
-
-        if ($namaSitus) {
-            // filter berdasarkan nama_situs hasil join (yang bisa dari 4,34 → "Situs A, Situs B")
-            $query->where('s.nama_situs', $namaSitus);
-        }
-
-        $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
-
-        $rows = $query
-            ->groupBy(
-                'a.id',
-                'a.id_admin',
-                'a.nama_staff',
-                'a.tanggal',
-                'a.status',
-                'a.remarks',
-                'u.id_situs'
-            )
-            ->selectRaw('
-                a.id,
-                a.id_admin,
-                a.nama_staff,
-                a.tanggal,
-                a.status,
-                a.remarks,
-                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
-            ')
-            ->orderBy('a.tanggal', 'desc')
-            ->get();
-
-        return response()->json([
-            'data' => $rows,
-        ]);
+    if ($status) {
+        $query->where('a.status', 'LIKE', "%{$status}%");
     }
 
+    // kalau mau tetap pakai filter site, sementara biarkan dulu:
+    $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
 
-    public function grafikDailyDetail(Request $request)
-    {
-        if ($resp = $this->ensureHrdAccess()) {
-            return $resp;
-        }
+    $rows = $query
+        ->groupBy(
+            'a.id',
+            'a.id_admin',
+            'a.nama_staff',
+            'a.id_situs',
+            'a.tanggal',
+            'a.status',
+            'a.remarks'
+            // 🔹 tidak perlu lagi groupBy u.id_situs
+        )
+        ->selectRaw('
+            a.id,
+            a.id_admin,
+            a.nama_staff,
+            a.id_situs,
+            a.tanggal,
+            a.status,
+            a.remarks,
+            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+        ')
+        ->orderBy('a.tanggal', 'desc')
+        ->get();
 
-        $status = $request->get('status');
-        $today  = Carbon::today();
+    return response()->json([
+        'data' => $rows,
+    ]);
+}
 
-        [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
 
-        $query = Absensi::from('tbhs_absensi as a')
-            ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
-            ->leftJoin('tbhs_situs as s', function ($join) {
-                $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
-            })
-            ->whereDate('a.tanggal', $today);
-
-        if ($status) {
-            $query->where('a.status', 'LIKE', "%{$status}%");
-        }
-
-        $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
-
-        $rows = $query
-            ->groupBy(
-                'a.id',
-                'a.id_admin',
-                'a.nama_staff',
-                'a.tanggal',
-                'a.status',
-                'a.remarks',
-                'u.id_situs'
-            )
-            ->selectRaw('
-                a.id,
-                a.id_admin,
-                a.nama_staff,
-                a.tanggal,
-                a.status,
-                a.remarks,
-                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
-            ')
-            ->orderBy('a.tanggal', 'desc')
-            ->get();
-
-        return response()->json([
-            'data' => $rows,
-        ]);
+public function grafikDetailSitus(Request $request)
+{
+    if ($resp = $this->ensureHrdAccess()) {
+        return $resp;
     }
+
+    $namaSitus = $request->get('situs');
+    $year      = now()->year;
+
+    [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
+
+    $now          = Carbon::now();
+    $currentMonth = $now->month;
+    $startMonth   = ($currentMonth <= 6) ? 1 : 7;
+    $endMonth     = $startMonth + 5;
+
+    $query = Absensi::from('tbhs_absensi as a')
+        ->leftJoin('tbhs_situs as s', function ($join) {
+            // 🔹 pakai a.id_situs, bukan u.id_situs
+            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+        })
+        ->whereYear('a.tanggal', $year)
+        ->whereBetween(DB::raw('MONTH(a.tanggal)'), [$startMonth, $endMonth]);
+
+    if ($namaSitus) {
+        // filter berdasarkan nama_situs hasil join
+        $query->where('s.nama_situs', $namaSitus);
+    }
+
+    $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
+
+    $rows = $query
+        ->groupBy(
+            'a.id',
+            'a.id_admin',
+            'a.nama_staff',
+            'a.tanggal',
+            'a.status',
+            'a.remarks'
+        )
+        ->selectRaw('
+            a.id,
+            a.id_admin,
+            a.nama_staff,
+            a.tanggal,
+            a.status,
+            a.remarks,
+            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+        ')
+        ->orderBy('a.tanggal', 'desc')
+        ->get();
+
+    return response()->json([
+        'data' => $rows,
+    ]);
+}
+
+
+
+public function grafikDailyDetail(Request $request)
+{
+    if ($resp = $this->ensureHrdAccess()) {
+        return $resp;
+    }
+
+    $status = $request->get('status');
+    $today  = Carbon::today();
+
+    [$namaSitusLogin, $idSitusArray, $isAllSite] = $this->resolveUserSiteScope();
+
+    $query = Absensi::from('tbhs_absensi as a')
+        ->leftJoin('tbhs_situs as s', function ($join) {
+            // 🔹 lagi-lagi pakai a.id_situs (varchar "4,34")
+            $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
+        })
+        ->whereDate('a.tanggal', $today);
+
+    if ($status) {
+        $query->where('a.status', 'LIKE', "%{$status}%");
+    }
+
+    $query = $this->applySiteFilter($query, $idSitusArray, $isAllSite, 'a.id_situs');
+
+    $rows = $query
+        ->groupBy(
+            'a.id',
+            'a.id_admin',
+            'a.nama_staff',
+            'a.tanggal',
+            'a.status',
+            'a.remarks'
+        )
+        ->selectRaw('
+            a.id,
+            a.id_admin,
+            a.nama_staff,
+            a.tanggal,
+            a.status,
+            a.remarks,
+            GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+        ')
+        ->orderBy('a.tanggal', 'desc')
+        ->get();
+
+    return response()->json([
+        'data' => $rows,
+    ]);
+}
+
     
     public function grafikCompareData(Request $request)
     {
@@ -1082,10 +1104,11 @@ class HrdManagementController extends Controller
         ]);
 
         $absensi = Absensi::from('tbhs_absensi as a')
-            ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
+            // kalau nggak butuh kolom dari users, join ini bisa dihapus
+            // ->join('tbhs_users as u', 'u.id_admin', '=', 'a.id_admin')
             ->leftJoin('tbhs_situs as s', function ($join) {
-                // s.id dicari di dalam string u.id_situs (misal: "4,34")
-                $join->on(DB::raw('FIND_IN_SET(s.id, u.id_situs)'), '>', DB::raw('0'));
+                // s.id dicari di dalam string a.id_situs (misal: "4,34")
+                $join->on(DB::raw('FIND_IN_SET(s.id, a.id_situs)'), '>', DB::raw('0'));
             })
             ->where('a.id_admin', $request->id_admin)
             ->orderBy('a.tanggal', 'desc')
@@ -1096,7 +1119,7 @@ class HrdManagementController extends Controller
                 'a.tanggal',
                 'a.status',
                 'a.remarks',
-                'u.id_situs'
+                'a.id_situs'
             )
             ->selectRaw('
                 a.id,
@@ -1104,13 +1127,12 @@ class HrdManagementController extends Controller
                 a.tanggal,
                 a.status,
                 a.remarks,
-                u.id_situs,
-                GROUP_CONCAT(s.nama_situs SEPARATOR ", ") AS nama_situs
+                a.id_situs,
+                GROUP_CONCAT(DISTINCT s.nama_situs ORDER BY s.nama_situs SEPARATOR ", ") AS nama_situs
             ')
             ->get();
 
         return response()->json($absensi);
     }
-
 
 }

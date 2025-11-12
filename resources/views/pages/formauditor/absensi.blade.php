@@ -1,41 +1,53 @@
 @push('styles')
 <style>
-    .absensi-container {
-        position: relative;    /* anchor untuk legend absolute */
-    }
-
-    .absensi-legend-outer {
+    .legend-wrapper {
         position: absolute;
-        top: 1px;
-        right: -128px;
+        top: 2px;       /* sedikit turun */
+        right: -303px;   /* geser kanan, silakan sesuaikan */
+        width: 220px;      /* lebih lebar */
+        padding: 20px;     /* padding lebih besar */
+        background: #fff;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
         display: flex;
         flex-direction: column;
-        justify-content: flex-start;
+        gap: 11px;
     }
 
-    .absensi-legend-item {
-        display: flex;
-        align-items: center;
-        margin-bottom: 4px;
+    .legend-box {
+        width: 75px;       /* lebih panjang */
+        height: 32px;      /* lebih tinggi */
+        font-size: 16px;   /* huruf lebih besar */
     }
 
-    .absensi-legend-box {
-        width: 40px;
-        height: 50px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #fff;
+    .legend-text {
+        margin-left: 8px;
         font-weight: bold;
-        font-size: 14px;
+        font-size: 14px;   /* huruf lebih besar */
+        color: #6c757d;
+        white-space: nowrap;
     }
 
-    .absensi-legend-text {
-        margin-left: 6px;
-        font-size: 14px;
-        color: #555;
-        white-space: nowrap;
-        font-weight: bolder;
+    /* CARD ABSENSI LEBIH BESAR */
+    .absensi-card {
+        min-width: 1240px;
+        min-height: 290px;
+    }
+
+    /* PERBESAR TABEL DI DALAM CARD */
+    .absensi-card table {
+        font-size: 17px;     /* sebelumnya 15px, silakan sesuaikan */
+    }
+
+    .absensi-card th,
+    .absensi-card td {
+        padding-top: 6px;
+        padding-bottom: 6px;
+    }
+
+    /* tinggi baris kedua (ikon H / T / S / ...) */
+    .absensi-card tbody tr:last-child td > div {
+        height: 55px;        /* sebelumnya 45px */
     }
 
     .legend-telat       { background-color: #ffc107; } /* T */
@@ -43,112 +55,134 @@
     .legend-izin        { background-color: #00b894; } /* I */
     .legend-tanpa-kabar { background-color: #e74c3c; } /* TK */
     .legend-cuti        { background-color: #27ae60; } /* C */
+    .legend-hadir       { background-color: #ffffff; } /* H */
 </style>
 @endpush
 
-<div class="container mt-4">
-    <div class="absensi-row">
-        <div class="flex-grow-1">
-            <div class="absensi-container"><!-- 🔹 sekarang legend nempel ke card ini -->
-                <div class="card shadow-lg border-success">
-                    <div class="card-header text-center bg-success text-white">
-                        <h2 class="fw-bold mb-0"><strong>ABSENSI</strong></h2>
-                        <h3><strong>{{ $tahunSekarang }}</strong></h3>
+<div class="container-fluid mt-4">
+    <div class="row">
+        {{-- KOLOM KIRI: CARD + TABEL ABSENSI --}}
+        <div class="col-12">
+            <div class="position-relative d-inline-block">
+                <div class="card shadow-lg border-success absensi-card">
+                <div class="card-header text-center bg-success text-white">
+                    <h2 class="fw-bold mb-0"><strong>ABSENSI</strong></h2>
+                    <h3><strong>{{ $tahunSekarang }}</strong></h3>
+                </div>
+
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-end mb-2">
+                        <select name="bulan" id="bulan" class="form-control form-control-sm"
+                                onchange="location.search='?bulan='+this.value">
+                            @foreach ($dropdownMonths as $m)
+                                <option value="{{ $m['key'] }}"
+                                    {{ $m['key'] === ($selectedBulan ?? '') ? 'selected' : '' }}>
+                                    {{ $m['nama'] }} {{ $m['tahun'] }}
+                                </option>
+                            @endforeach
+                        </select>
                     </div>
 
-                    <div class="card-body p-2">
-                        <div class="d-flex justify-content-end mb-2">
-                            <select name="bulan" id="bulan" class="form-control form-control-sm"
-                                    onchange="location.search='?bulan='+this.value">
-                                @foreach ($dropdownMonths as $m)
-                                    <option value="{{ $m['key'] }}"
-                                        {{ $m['key'] === ($selectedBulan ?? '') ? 'selected' : '' }}>
-                                        {{ $m['nama'] }} {{ $m['tahun'] }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm text-center align-middle mb-0"
+                            style="font-size: 15px; width: 100%;">
 
-                        <div class="row">
-                            <div class="table-responsive">
-                                <table class="table table-bordered table-sm text-center align-middle mb-0"
-                                       style="font-size: 15px; table-layout: fixed; width: 100%;">
+                            <thead class="table-success">
+                                <tr>
+                                    <th style="width: 10%;">BULAN</th>
+                                    @for ($i = 1; $i <= $hariDalamBulanAktif; $i++)
+                                        <th style="width: calc(85% / {{ $hariDalamBulanAktif }});">
+                                            {{ str_pad($i, 2, '0', STR_PAD_LEFT) }}
+                                        </th>
+                                    @endfor
+                                </tr>
+                            </thead>
 
-                                    <thead class="table-success">
-                                        <tr>
-                                            <th style="width: 10%;">BULAN</th>
-                                            @for ($i = 1; $i <= $hariDalamBulanAktif; $i++)
-                                                <th style="width: calc(85% / {{ $hariDalamBulanAktif }});">
-                                                    {{ str_pad($i, 2, '0', STR_PAD_LEFT) }}
-                                                </th>
-                                            @endfor
-                                        </tr>
-                                    </thead>
+                            <tbody>
+                                @foreach ($bulanList as $b)
+                                    <tr>
+                                        <td class="fw-bold bg-info text-dark text-center align-middle"
+                                            rowspan="2"
+                                            style="vertical-align: middle; text-transform: uppercase;">
+                                            {{ $b['nama'] }}
+                                        </td>
 
-                                    <tbody>
-                                        @foreach ($bulanList as $b)
-                                            {{-- Baris nama bulan + hari --}}
-                                            <tr>
-                                                <td class="fw-bold bg-info text-dark text-center align-middle"
-                                                    rowspan="2"
-                                                    style="vertical-align: middle; text-transform: uppercase;">
-                                                    {{ $b['nama'] }}
-                                                </td>
-
-                                                {{-- Baris hari (2 huruf EN) --}}
-                                                @foreach ($activeDays as $day)
-                                                    <td class="bg-secondary text-white fw-bold border border-danger p-1">
-                                                        {{ $day['label'] }}
-                                                    </td>
-                                                @endforeach
-                                            </tr>
-
-                                            {{-- Baris status absensi --}}
-                                            <tr>
-                                                @foreach ($activeDays as $day)
-                                                    <td class="{{ $day['color'] }} border border-danger p-0">
-                                                        <div class="d-flex justify-content-center align-items-center"
-                                                             style="height: 45px;">
-                                                            <span
-                                                                class="fw-bold absensi-icon {{ $day['status'] === 'HADIR' ? '' : 'absensi-clickable' }}"
-                                                                style="{{ $day['status'] === 'HADIR' ? '' : 'cursor:pointer;' }}"
-                                                                data-date="{{ $day['tanggal'] }}"
-                                                                data-status="{{ $day['status'] }}"
-                                                                data-remarks="{{ $day['remarks'] }}">
-                                                                {{ $day['icon'] }}
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                @endforeach
-                                            </tr>
+                                        @foreach ($activeDays as $day)
+                                            <td class="bg-secondary text-white fw-bold border border-danger p-1 day-label">
+                                                {{ $day['label'] }}
+                                            </td>
                                         @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
+                                    </tr>
 
-                            {{-- LEGEND DI KANAN --}}
-                            <div class="absensi-legend-outer">
-                                <div class="absensi-legend-item">
-                                    <div class="absensi-legend-box legend-telat">T</div>
-                                    <span class="absensi-legend-text">Telat</span>
-                                </div>
-                                <div class="absensi-legend-item">
-                                    <div class="absensi-legend-box legend-sakit">S</div>
-                                    <span class="absensi-legend-text">Sakit</span>
-                                </div>
-                                <div class="absensi-legend-item">
-                                    <div class="absensi-legend-box legend-izin">I</div>
-                                    <span class="absensi-legend-text">Izin</span>
-                                </div>
-                                <div class="absensi-legend-item">
-                                    <div class="absensi-legend-box legend-tanpa-kabar">TK</div>
-                                    <span class="absensi-legend-text">Tanpa Kabar</span>
-                                </div>
-                                <div class="absensi-legend-item">
-                                    <div class="absensi-legend-box legend-cuti">C</div>
-                                    <span class="absensi-legend-text">Cuti</span>
-                                </div>
-                            </div>
+                                    <tr>
+                                        @foreach ($activeDays as $day)
+                                            <td class="{{ $day['color'] }} border border-danger p-0">
+                                                <div class="d-flex justify-content-center align-items-center"
+                                                     style="height: 45px;">
+                                                    <span
+                                                        class="fw-bold absensi-icon {{ $day['status'] === 'HADIR' ? '' : 'absensi-clickable' }}"
+                                                        style="{{ $day['status'] === 'HADIR' ? '' : 'cursor:pointer;' }}"
+                                                        data-date="{{ $day['tanggal'] }}"
+                                                        data-status="{{ $day['status'] }}"
+                                                        data-remarks="{{ $day['remarks'] }}">
+                                                        {{ $day['icon'] }}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        @endforeach
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+                                {{-- LEGEND 2×3 DI KANAN --}}
+<div class="legend-wrapper">
+    <div class="d-flex align-items-center">
+        <div class="legend-box bg-white border d-flex justify-content-center align-items-center">
+            H
+        </div>
+        <span class="legend-text">Hadir</span>
+    </div>
+
+    <div class="d-flex align-items-center">
+        <div class="legend-box bg-warning border d-flex justify-content-center align-items-center">
+            T
+        </div>
+        <span class="legend-text">Telat</span>
+    </div>
+
+    <div class="d-flex align-items-center">
+        <div class="legend-box bg-primary text-white border d-flex justify-content-center align-items-center">
+            S
+        </div>
+        <span class="legend-text">Sakit</span>
+    </div>
+
+    <div class="d-flex align-items-center">
+        <div class="legend-box bg-success text-white border d-flex justify-content-center align-items-center">
+            I
+        </div>
+        <span class="legend-text">Izin</span>
+    </div>
+
+    <div class="d-flex align-items-center">
+        <div class="legend-box bg-danger text-white border d-flex justify-content-center align-items-center">
+            TK
+        </div>
+        <span class="legend-text">Tanpa Kabar</span>
+    </div>
+
+    <div class="d-flex align-items-center">
+        <div class="legend-box bg-success text-white border d-flex justify-content-center align-items-center">
+            C
+        </div>
+        <span class="legend-text">Cuti</span>
+    </div>
+</div>
+                            </div> {{-- end position-relative --}}
                         </div>
                     </div>
                 </div>
