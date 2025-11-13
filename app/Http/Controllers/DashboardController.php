@@ -2,43 +2,97 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Forumaudit;   // tbhs_forum
+use App\Models\User;         // tbhs_users
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
+    /** sentinel untuk judul kosong */
+    public const NO_KEY   = '__NO_TOPIC__';
+    public const NO_LABEL = 'LAINNYA / TANPA TOPIK';
+
     public function __construct()
     {
         $this->middleware('auth');
     }
 
-    /**
-     * Pilih periode aktif dengan minimal jumlah topik unik.
-     * - Null-safe saat koleksi kosong.
-     */
-    private function pickPeriodeAktif(?string $forcedPeriode = null, int $minUniqTopics = 10): ?string
-    {
-        if ($forcedPeriode) return $forcedPeriode;
+    /* =========================
+     * Helpers (semua public)
+     * ======================= */
 
-        // Normalisasi aman UTF-8: hilangkan NBSP/TAB/LF/CR lalu TRIM, NULL -> ''
-        $NBSP = "CONVERT(0xC2A0 USING utf8mb4)";
-        $norm = "
-            UPPER(
-              TRIM(
+    /** Ekspresi SQL untuk NBSP (UTF-8) – dipakai di normalisasi judul. */
+    public function nbspExpr(): string
+    {
+        return "CONVERT(0xC2A0 USING utf8mb4)";
+    }
+
+    /**
+     * Ekspresi SQL untuk normalisasi judul:
+     * - NULL => '' ; hilangkan NBSP/TAB/LF/CR ; TRIM; UPPER (opsional).
+     * @param bool   $upper apakah di-UPPER
+     * @param string $col   kolom sumber, default f.topik_title
+     */
+    public function normalizedTitleExpr(bool $upper = true, string $col = 'f.topik_title'): string
+    {
+        $NBSP = $this->nbspExpr();
+        $expr = "
+            TRIM(
                 REPLACE(
-                  REPLACE(
                     REPLACE(
-                      REPLACE(IFNULL(f.topik_title,''), $NBSP, ' '), CHAR(9), ' '
-                    ), CHAR(10), ' '
-                  ), CHAR(13), ' '
-                )
-              )
+                        REPLACE(
+                            REPLACE(IFNULL($col,''), $NBSP, ' ')
+                        , CHAR(9),  ' ')
+                    , CHAR(10), ' ')
+                , CHAR(13), ' ')
             )
         ";
+        return $upper ? "UPPER($expr)" : $expr;
+    }
 
-        $rows = DB::table('tbhs_forum as f')
+    /** Label status_case dalam SQL */
+    public function statusLabelSql(string $col = 'f.status_case'): string
+    {
+        return "
+            CASE $col
+              WHEN 1 THEN 'Open'
+              WHEN 2 THEN 'Pending'
+              WHEN 3 THEN 'On Progress'
+              WHEN 4 THEN 'Close'
+              ELSE '-'
+            END
+        ";
+    }
+
+    /** Map query param status -> [daftar kode, label ringkas] */
+    public function resolveStatusScope(?string $param): array
+    {
+        $p = strtolower(trim($param ?? 'active'));
+        return match ($p) {
+            'open'                    => [[1], 'Open'],
+            'pending'                 => [[2], 'Pending'],
+            'progress', 'onprogress'  => [[3], 'On Progress'],
+            'closed', 'close'         => [[4], 'Closed'],
+            'all'                     => [[1,2,3,4], 'Semua Status'],
+            default                   => [[1,2,3], 'Open + Pending + On Progress'], // active
+        };
+    }
+
+    /**
+     * Ambil periode aktif; jika tidak dipaksa, pilih periode dgn minimal topik unik.
+     * @return string|null
+     */
+    public function pickPeriodeAktif(?string $forced = null, int $minUniqTopics = 10): ?string
+    {
+        if ($forced) return $forced;
+
+        $norm = $this->normalizedTitleExpr(true, 'f.topik_title');
+
+        $rows = Forumaudit::query()
+            ->from('tbhs_forum as f')
             ->selectRaw("f.periode, COUNT(DISTINCT $norm) AS uniq_topics")
             ->where('f.soft_delete', '0')
             ->groupBy('f.periode')
@@ -46,109 +100,83 @@ class DashboardController extends Controller
             ->get();
 
         $ok = $rows->firstWhere('uniq_topics', '>=', $minUniqTopics);
-
-        // Null-safe ambil periode pertama jika tidak ada yang memenuhi minUniqTopics
         return data_get($ok, 'periode', data_get($rows->first(), 'periode'));
     }
 
-    /** Map parameter status -> scope status_case. */
-    private function resolveStatusScope(?string $statusParam): array
+    /** Daftar kolom yang tersedia pada tbhs_forum (via Schema) */
+    public function forumColumns(): array
     {
-        $statusParam = strtolower(trim($statusParam ?? 'active'));
-        switch ($statusParam) {
-            case 'open':      return [[1], 'Open'];
-            case 'pending':   return [[2], 'Pending'];
-            case 'progress':
-            case 'onprogress':return [[3], 'On Progress'];
-            case 'closed':
-            case 'close':     return [[4], 'Closed'];
-            case 'all':       return [[1,2,3,4], 'Semua Status'];
-            case 'active':
-            default:          return [[1,2,3], 'Open + Pending + On Progress'];
+        $cols = [];
+        foreach (['id_auditor','id_admin','created_by','slug'] as $c) {
+            if (Schema::hasColumn('tbhs_forum', $c)) $cols[] = $c;
         }
+        return $cols;
     }
 
-    /** ===== Util palet warna & kontras teks ===== */
-    private function colorAt(float $r): array
+    /** Pilih kolom petugas sesuai sumber (admin|auditor|any). */
+    public function selectPetugas(string $src, array $cols): string
     {
-        /**
-         * PALET 6 warna (high->low):
-         * merah -> oranye -> kuning -> yellow-green -> hijau muda -> putih
-         * pos 1 = terbanyak, pos 0 = tersedikit
-         */
-        $palette = [
-            [1.00, [255,   0,   0]], // merah
-            [0.78, [255, 128,   0]], // oranye
-            [0.56, [255, 210,   0]], // kuning
-            [0.36, [173, 255,  47]], // yellow-green
-            [0.18, [144, 238, 144]], // hijau muda
-            [0.00, [255, 255, 255]], // putih
-        ];
+        $hasIdAuditor = in_array('id_auditor', $cols, true);
+        $hasIdAdmin   = in_array('id_admin',   $cols, true);
+        $hasCreatedBy = in_array('created_by', $cols, true);
 
-        $r = max(0, min(1, $r));
-        for ($i = 0; $i < count($palette) - 1; $i++) {
-            [$pHi, $cHi] = $palette[$i];
-            [$pLo, $cLo] = $palette[$i + 1];
-            if ($r <= $pHi && $r >= $pLo) {
-                $t = ($pHi - $pLo) > 0 ? ($r - $pLo) / ($pHi - $pLo) : 0;
-                $R = (int) round($cLo[0] + ($cHi[0] - $cLo[0]) * $t);
-                $G = (int) round($cLo[1] + ($cHi[1] - $cLo[1]) * $t);
-                $B = (int) round($cLo[2] + ($cHi[2] - $cLo[2]) * $t);
-                return [$R, $G, $B];
-            }
-        }
-        return [255, 255, 255];
+        if ($src === 'admin'   && $hasIdAdmin)   return 'f.id_admin';
+        if ($src === 'auditor' && $hasIdAuditor) return 'f.id_auditor';
+
+        $pieces = [];
+        if ($hasIdAuditor) $pieces[] = 'f.id_auditor';
+        if ($hasIdAdmin)   $pieces[] = 'f.id_admin';
+        if ($hasCreatedBy) $pieces[] = 'f.created_by';
+
+        return $pieces ? 'COALESCE(' . implode(',', $pieces) . ')' : 'NULL';
     }
 
-    private function textFor(array $rgb): string
+    /** Pilih kolom slug (fallback ke id). */
+    public function selectSlug(array $cols): string
     {
-        $luma = 0.299 * $rgb[0] + 0.587 * $rgb[1] + 0.114 * $rgb[2];
-        return $luma < 150 ? '#ffffff' : '#111111';
+        return in_array('slug', $cols, true) ? 'f.slug' : 'f.id';
     }
 
-    /** Dashboard — Topik Ranking (periode & scope status). */
+    /** Format created_at lokal (UTC -> UTC+7). */
+    public function sqlLocalCreatedAt(string $col = 'f.created_at'): string
+    {
+        // Jika DB sudah lokal, ganti dengan: "DATE_FORMAT($col, '%Y-%m-%d %H:%i:%s')"
+        return "DATE_FORMAT(CONVERT_TZ($col, '+00:00', '+07:00'), '%Y-%m-%d %H:%i:%s')";
+    }
+
+    /* =========================
+     * Controller actions
+     * ======================= */
+
+    /** Dashboard — Topik Ranking. */
     public function index(Request $request)
     {
         $search        = $request->query('q');
-        $currentTab    = $request->query('tab', 'topik_title'); // dipakai Blade
+        $currentTab    = $request->query('tab', 'topik_title');
         $periodeParam  = $request->query('periode');
         [$statusScope, $statusLabel] = $this->resolveStatusScope($request->query('status'));
+        $periodeAktif  = $this->pickPeriodeAktif($periodeParam, 10);
 
-        $periodeAktif = $this->pickPeriodeAktif($periodeParam, 10);
-
-        // 🔒 PRIVILEGE: pindah dari Blade ke controller (aman pakai data_get)
+        // privilege tombol "Info Lebih Lanjut"
         $authLink = \App\Helpers\AuthLink::access_url(Auth::user()->id_admin, 'dashinfo');
         $canSeeTopicLinks = (int) data_get($authLink, '0.nilai', 0) > 0;
 
-        // Label & sentinel utk judul kosong
-        $NO_KEY   = '__NO_TOPIC__';
-        $NO_LABEL = 'LAINNYA / TANPA TOPIK';
+        // ekspresi normalisasi judul
+        $rawTitle = $this->normalizedTitleExpr(false, 'f.topik_title');
+        $normKey  = "CASE WHEN ($rawTitle='' OR $rawTitle='0') THEN '".self::NO_KEY."' ELSE UPPER($rawTitle) END";
 
-        // Normalisasi UTF-8 (NULL -> '') + buang NBSP/TAB/LF/CR + TRIM
-        $NBSP     = "CONVERT(0xC2A0 USING utf8mb4)";
-        $rawTitle = "
-            TRIM(
-                REPLACE(
-                    REPLACE(
-                        REPLACE(
-                            REPLACE(IFNULL(f.topik_title,''), $NBSP, ' ')
-                        , CHAR(9),  ' ')
-                    , CHAR(10), ' ')
-                , CHAR(13), ' ')
-            )
-        ";
-        $normKey  = "CASE WHEN ($rawTitle='' OR $rawTitle='0') THEN '$NO_KEY' ELSE UPPER($rawTitle) END";
-
-        // === Agregasi jumlah per key_title ===
-        $forumAgg = DB::table('tbhs_forum as f')
+        // agregasi jumlah per judul-normal (key_title)
+        $forumAgg = Forumaudit::query()
+            ->from('tbhs_forum as f')
             ->selectRaw("$normKey AS key_title, COUNT(*) AS total")
             ->where('f.soft_delete', '0')
             ->where('f.periode', $periodeAktif)
             ->whereIn('f.status_case', $statusScope)
             ->groupBy('key_title');
 
-        // === Sumber judul valid (bukan kosong/0) ===
-        $titlesValid = DB::table('tbhs_forum as f')
+        // kandidat judul valid
+        $titlesValid = Forumaudit::query()
+            ->from('tbhs_forum as f')
             ->selectRaw("
                 $normKey AS key_title,
                 SUBSTRING_INDEX(
@@ -165,25 +193,24 @@ class DashboardController extends Controller
             ->when($search, fn ($q) => $q->whereRaw("$rawTitle LIKE ?", ["%{$search}%"]))
             ->groupBy('key_title');
 
-        // === Satu baris untuk judul kosong/0 (hanya muncul jika memang ada) ===
-        $titlesBlank = DB::table('tbhs_forum as f')
-            ->selectRaw("'$NO_KEY' AS key_title, '$NO_LABEL' AS topik_title")
+        // satu baris utk judul kosong
+        $titlesBlank = Forumaudit::query()
+            ->from('tbhs_forum as f')
+            ->selectRaw("'".self::NO_KEY."' AS key_title, '".self::NO_LABEL."' AS topik_title")
             ->where('f.soft_delete', '0')
             ->where('f.periode', $periodeAktif)
             ->whereIn('f.status_case', $statusScope)
             ->whereRaw("($rawTitle='' OR $rawTitle='0')")
             ->limit(1);
 
-        // UNION keduanya, lalu pastikan tiap key hanya satu label
-        $titlesAll = $titlesValid->union($titlesBlank);
-
-        $normalizedTitles = DB::query()
-            ->fromSub($titlesAll, 't')
+        // pastikan 1 label per key
+        $normalizedTitles = Forumaudit::query()
+            ->fromSub($titlesValid->union($titlesBlank), 't')
             ->selectRaw('t.key_title, MIN(t.topik_title) AS topik_title')
             ->groupBy('t.key_title');
 
-        // Join ke agregat
-        $topik = DB::query()
+        // join ke agregat → daftar topik
+        $topik = Forumaudit::query()
             ->fromSub($normalizedTitles, 't')
             ->joinSub($forumAgg, 'f', 't.key_title', '=', 'f.key_title')
             ->selectRaw('t.topik_title, f.total AS cases_count')
@@ -193,27 +220,16 @@ class DashboardController extends Controller
 
         $maxCases = max(1, (int) $topik->max('cases_count'));
 
-        /** ====== Siapkan data kartu untuk Blade (warna, teks, URL) ====== */
+        // bahan untuk kartu (ratio di-boost)
         $topikCards = $topik->map(function ($row) use ($maxCases, $periodeAktif, $request) {
-            $n        = (int) ($row->cases_count ?? 0);
-            $ratio    = $maxCases ? ($n / $maxCases) : 0;      // 0..1
-            $ratioAdj = pow($ratio, 0.88);                     // boost kecil
-
-            // ⬇️ pakai list() biar aman di semua lingkungan
-            list($r, $g, $b) = $this->colorAt($ratioAdj);
-
-            $bg        = "rgb($r, $g, $b)";
-            // ⬇️ pakai array() (hindari [] di argumen fungsi)
-            $textColor = $this->textFor(array($r, $g, $b));
-            $border    = $n === 0 ? '#eaeaea' : 'transparent';
+            $n     = (int) ($row->cases_count ?? 0);
+            $ratio = $maxCases ? pow(($n / $maxCases), 0.88) : 0;
 
             return [
-                'count'     => $n,
-                'title'     => $row->topik_title,
-                'bg'        => $bg,
-                'textColor' => $textColor,
-                'border'    => $border,
-                'moreUrl'   => route('dashboard.topicPage', [
+                'count'   => $n,
+                'title'   => $row->topik_title,
+                'ratio'   => $ratio,
+                'moreUrl' => route('dashboard.topicPage', [
                     'topic'   => $row->topik_title,
                     'periode' => $periodeAktif,
                     'status'  => $request->input('status', 'active'),
@@ -222,8 +238,7 @@ class DashboardController extends Controller
             ];
         })->values();
 
-        // URL leaderboard ikut bawa periode aktif supaya konsisten
-        $leaderboardUrl = isset($periodeAktif)
+        $leaderboardUrl = $periodeAktif
             ? route('dashboard.leaderboard', ['periode' => $periodeAktif])
             : route('dashboard.leaderboard');
 
@@ -240,42 +255,44 @@ class DashboardController extends Controller
         ));
     }
 
-    /** KPI (status_case=4) tetap per-periode. */
+    /** KPI (status_case=4) per-periode. */
     public function leaderboard(Request $request)
     {
-        $periodeParam    = $request->query('periode');
-        $periodeSekarang = $this->pickPeriodeAktif($periodeParam, 1);
+        $periode = $this->pickPeriodeAktif($request->query('periode'), 1);
 
-        $activeUsers = DB::table('tbhs_users as u')
+        // nama staff aktif (join jabatan) → via model User
+        $activeNames = User::query()
+            ->from('tbhs_users as u')
             ->join('tbhs_jabatan as j', 'u.id_jabatan', '=', 'j.id')
             ->where('u.status', 1)
             ->whereNotIn('j.id', [1, 2, 9, 13, 14])
-            ->select('u.nama_staff')
-            ->get();
+            ->pluck('u.nama_staff');
 
-        $staffNames = $activeUsers->pluck('nama_staff')->toArray();
-
-        $forumAggregated = DB::table('tbhs_forum as f')
-            ->select(
-                'f.created_for_name',
-                DB::raw('COUNT(DISTINCT f.id) as total_cases'),
-                DB::raw('SUM(CASE WHEN f.status_kesalahan = 1 THEN 1 ELSE 0 END) as total_no_fault'),
-                DB::raw('SUM(CASE WHEN f.status_kesalahan IN (2, 3, 4) THEN 1 ELSE 0 END) as total_fault')
-            )
+        // subquery agregasi forum (via Forumaudit)
+        $forumAgg = Forumaudit::query()
+            ->from('tbhs_forum as f')
+            ->selectRaw("
+                f.created_for_name,
+                COUNT(DISTINCT f.id) as total_cases,
+                SUM(CASE WHEN f.status_kesalahan = 1 THEN 1 ELSE 0 END) as total_no_fault,
+                SUM(CASE WHEN f.status_kesalahan IN (2, 3, 4) THEN 1 ELSE 0 END) as total_fault
+            ")
             ->where('f.soft_delete', '0')
             ->where('f.status_case', 4)
-            ->where('f.periode', $periodeSekarang)
+            ->where('f.periode', $periode)
             ->groupBy('f.created_for_name');
 
-        $bad = DB::table('tbhs_users as u')
-            ->leftJoinSub($forumAggregated, 'f', 'u.nama_staff', '=', 'f.created_for_name')
-            ->whereIn('u.nama_staff', $staffNames)
-            ->select(
-                'u.nama_staff',
-                DB::raw('IFNULL(f.total_cases, 0) as total_cases'),
-                DB::raw('IFNULL(f.total_no_fault, 0) as total_no_fault'),
-                DB::raw('IFNULL(f.total_fault, 0) as total_fault')
-            )
+        // worst
+        $bad = User::query()
+            ->from('tbhs_users as u')
+            ->leftJoinSub($forumAgg, 'f', 'u.nama_staff', '=', 'f.created_for_name')
+            ->whereIn('u.nama_staff', $activeNames)
+            ->selectRaw("
+                u.nama_staff,
+                IFNULL(f.total_cases, 0)   as total_cases,
+                IFNULL(f.total_no_fault, 0) as total_no_fault,
+                IFNULL(f.total_fault, 0)   as total_fault
+            ")
             ->distinct()
             ->orderByDesc('total_fault')
             ->orderByDesc('total_cases')
@@ -283,15 +300,17 @@ class DashboardController extends Controller
             ->limit(20)
             ->get();
 
-        $good = DB::table('tbhs_users as u')
-            ->leftJoinSub($forumAggregated, 'f', 'u.nama_staff', '=', 'f.created_for_name')
-            ->whereIn('u.nama_staff', $staffNames)
-            ->select(
-                'u.nama_staff',
-                DB::raw('IFNULL(f.total_cases, 0) as total_cases'),
-                DB::raw('IFNULL(f.total_no_fault, 0) as total_no_fault'),
-                DB::raw('IFNULL(f.total_fault, 0) as total_fault')
-            )
+        // best
+        $good = User::query()
+            ->from('tbhs_users as u')
+            ->leftJoinSub($forumAgg, 'f', 'u.nama_staff', '=', 'f.created_for_name')
+            ->whereIn('u.nama_staff', $activeNames)
+            ->selectRaw("
+                u.nama_staff,
+                IFNULL(f.total_cases, 0)   as total_cases,
+                IFNULL(f.total_no_fault, 0) as total_no_fault,
+                IFNULL(f.total_fault, 0)   as total_fault
+            ")
             ->distinct()
             ->orderByDesc('total_no_fault')
             ->orderBy('total_fault', 'asc')
@@ -306,32 +325,23 @@ class DashboardController extends Controller
     /** Halaman list kasus per topik. */
     public function topicPage(Request $request)
     {
-        $topic         = trim($request->query('topic', ''));
-        $periodeParam  = $request->query('periode');
-        [$statusScope, $statusLabel] = $this->resolveStatusScope($request->query('status'));
+        $topic = trim($request->query('topic', ''));
+        if ($topic === '') return redirect()->route('dashboard.index');
 
-        if ($topic === '') {
-            return redirect()->route('dashboard.index');
-        }
-
-        $periodeAktif = $this->pickPeriodeAktif($periodeParam, 1);
-
+        $periodeAktif    = $this->pickPeriodeAktif($request->query('periode'), 1);
+        [, $statusLabel] = $this->resolveStatusScope($request->query('status'));
         $src = $request->query('src', 'any'); // 'admin' | 'auditor' | 'any'
         $colIdLabel = $src === 'admin' ? 'ID Admin' : ($src === 'auditor' ? 'ID Auditor' : 'ID Auditor/Admin');
 
-        // Template URL detail auditor (pakai route kalau ada, fallback ke URL manual)
-        if (Route::has('auditorforum.auditorpostdetails')) {
-            $auditorDetailUrlTemplate = route('auditorforum.auditorpostdetails', ['slug' => '__SLUG__']);
-        } else {
-            $auditorDetailUrlTemplate = url('/auditorforum/auditorpostdetails/__SLUG__');
-        }
+        $auditorDetailUrlTemplate = Route::has('auditorforum.auditorpostdetails')
+            ? route('auditorforum.auditorpostdetails', ['slug' => '__SLUG__'])
+            : url('/auditorforum/auditorpostdetails/__SLUG__');
 
-        // Konfigurasi AJAX DataTables dipindah ke controller
         $dtAjaxUrl    = route('dashboard.topicCases');
         $dtAjaxParams = [
             'topic'   => $topic,
             'periode' => $periodeAktif,
-            'status'  => 'all',      // tampilkan semua status
+            'status'  => 'all',
             'src'     => 'auditor',
         ];
 
@@ -347,151 +357,83 @@ class DashboardController extends Controller
         ));
     }
 
-    /** JSON untuk DataTables pada halaman topicPage. */
+    /** JSON untuk DataTables di topicPage. */
     public function topicCases(Request $request)
     {
-        $topic         = trim($request->query('topic', ''));
-        $periodeParam  = $request->query('periode');
+        $topic        = trim($request->query('topic', ''));
+        $periodeAktif = $this->pickPeriodeAktif($request->query('periode'), 1);
         [$statusScope] = $this->resolveStatusScope($request->query('status'));
-        $periodeAktif  = $this->pickPeriodeAktif($periodeParam, 1);
-        $src           = $request->query('src', 'any'); // 'admin' | 'auditor' | 'any'
+        $src          = $request->query('src', 'any');
 
-        // ====== DETEKSI KOLOM ======
-        $cols = DB::table('information_schema.COLUMNS')
-            ->whereRaw('TABLE_SCHEMA = DATABASE()')
-            ->where('TABLE_NAME', 'tbhs_forum')
-            ->pluck('COLUMN_NAME')
-            ->toArray();
+        $cols          = $this->forumColumns();
+        $selectPetugas = $this->selectPetugas($src, $cols);
+        $selectSlug    = $this->selectSlug($cols);
 
-        $hasIdAuditor = in_array('id_auditor', $cols, true);
-        $hasIdAdmin   = in_array('id_admin', $cols, true);
-        $hasCreatedBy = in_array('created_by', $cols, true);
-        $hasSlug      = in_array('slug', $cols, true);
-
-        // Pilih kolom "petugas" sesuai sumber yg diminta.
-        if ($src === 'admin' && $hasIdAdmin) {
-            $selectPetugas = 'f.id_admin';
-        } elseif ($src === 'auditor' && $hasIdAuditor) {
-            $selectPetugas = 'f.id_auditor';
-        } else {
-            // fallback: pakai yang ada (COALESCE)
-            $pieces = [];
-            if ($hasIdAuditor) $pieces[] = 'f.id_auditor';
-            if ($hasIdAdmin)   $pieces[] = 'f.id_admin';
-            if ($hasCreatedBy) $pieces[] = 'f.created_by';
-            $selectPetugas = count($pieces) ? 'COALESCE(' . implode(',', $pieces) . ')' : 'NULL';
-        }
-
-        // pilih slug kalau ada, fallback ke id
-        $selectSlug = $hasSlug ? 'f.slug' : 'f.id';
-
-        // ====== NORMALISASI JUDUL (konsisten dgn index()) ======
-        $NO_LABEL = 'LAINNYA / TANPA TOPIK';
-        $NBSP     = "CONVERT(0xC2A0 USING utf8mb4)";
-        $rawTitle = "
-            TRIM(
-                REPLACE(
-                    REPLACE(
-                        REPLACE(
-                            REPLACE(IFNULL(f.topik_title,''), $NBSP, ' ')
-                        , CHAR(9),  ' ')
-                    , CHAR(10), ' ')
-                , CHAR(13), ' ')
-            )
-        ";
+        $rawTitle  = $this->normalizedTitleExpr(false, 'f.topik_title');
         $normCol   = "UPPER($rawTitle)";
-        $normParam = "
-            UPPER(
-              TRIM(
-                REPLACE(
-                  REPLACE(
-                    REPLACE(
-                      REPLACE(IFNULL(?,''), $NBSP, ' ')
-                    , CHAR(9),  ' ')
-                  , CHAR(10), ' ')
-                , CHAR(13), ' ')
-              )
-            )
-        ";
+        $normParam = "UPPER(".$this->normalizedTitleExpr(false, ' ? ').")";
 
-        // ====== QUERY DATA ======
-        $rows = DB::table('tbhs_forum as f')
+        $createdAtSql = $this->sqlLocalCreatedAt('f.created_at');
+
+        $rows = Forumaudit::query()
+            ->from('tbhs_forum as f')
             ->selectRaw("
-                $selectSlug                                   AS slug,
-                f.id                                          AS topik_id,
-                TRIM(f.topik_title)                           AS topik_title,
-                f.created_for_name                            AS created_for_name,
-                DATE_FORMAT(f.created_at,'%Y-%m-%d %H:%i:%s') AS created_at,
-                $selectPetugas                                AS id_auditor, -- alias tetap 'id_auditor' agar kompatibel dgn view
-                f.status_case                                 AS status_code,
-                CASE f.status_case
-                  WHEN 1 THEN 'Open'
-                  WHEN 2 THEN 'Pending'
-                  WHEN 3 THEN 'On Progress'
-                  WHEN 4 THEN 'Close'
-                  ELSE '-'
-                END                                           AS status_text
+                $selectSlug                                     AS slug,
+                f.id                                            AS topik_id,
+                TRIM(f.topik_title)                             AS topik_title,
+                f.created_for_name                              AS created_for_name,
+                $createdAtSql                                   AS created_at,
+                $selectPetugas                                  AS id_auditor,
+                f.status_case                                   AS status_code,
+                {$this->statusLabelSql()}                       AS status_text
             ")
             ->where('f.soft_delete', '0')
             ->where('f.periode', $periodeAktif)
             ->whereIn('f.status_case', $statusScope)
-            // filter sumber data (hanya jika kolomnya memang ada)
-            ->when($src === 'admin'   && $hasIdAdmin,   fn($q) => $q->whereRaw("COALESCE(f.id_admin,'') <> ''"))
-            ->when($src === 'auditor' && $hasIdAuditor, fn($q) => $q->whereRaw("COALESCE(f.id_auditor,'') <> ''"))
-            // filter topik
-            ->when($topic !== '', function ($q) use ($topic, $NO_LABEL, $rawTitle, $normCol, $normParam) {
-                if (strcasecmp($topic, $NO_LABEL) === 0) {
+            ->when($src === 'admin'   && in_array('id_admin',   $cols, true), fn($q) => $q->whereRaw("COALESCE(f.id_admin,'') <> ''"))
+            ->when($src === 'auditor' && in_array('id_auditor', $cols, true), fn($q) => $q->whereRaw("COALESCE(f.id_auditor,'') <> ''"))
+            ->when($topic !== '', function ($q) use ($topic, $rawTitle, $normCol, $normParam) {
+                if (strcasecmp($topic, self::NO_LABEL) === 0) {
                     $q->whereRaw("($rawTitle='' OR $rawTitle='0')");
                 } else {
                     $q->whereRaw("$normCol = $normParam", [$topic]);
                 }
             })
             ->orderByDesc('f.created_at')
+            ->toBase() // penting: hindari casting Eloquent ISO8601
             ->get();
 
         return response()->json(['data' => $rows]);
     }
 
-    /** JSON: semua kasus pada periode aktif (default: status 1–4). */
+    /** JSON: semua kasus pada periode aktif. */
     public function allCases(Request $request)
     {
-        $periodeParam = $request->query('periode');
+        $periodeAktif  = $this->pickPeriodeAktif($request->query('periode'), 1);
         [$statusScope] = $this->resolveStatusScope($request->query('status', 'all'));
-        $periodeAktif  = $this->pickPeriodeAktif($periodeParam, 1);
 
-        $hasIdAdmin = DB::table('information_schema.COLUMNS')
-            ->whereRaw('TABLE_SCHEMA = DATABASE()')
-            ->where('TABLE_NAME', 'tbhs_forum')
-            ->where('COLUMN_NAME', 'id_admin')->exists();
+        $cols        = $this->forumColumns();
+        $selectSlug  = $this->selectSlug($cols);
+        $selectAdmin = in_array('id_admin', $cols, true) ? 'f.id_admin' : 'NULL';
 
-        $hasSlug = DB::table('information_schema.COLUMNS')
-            ->whereRaw('TABLE_SCHEMA = DATABASE()')
-            ->where('TABLE_NAME', 'tbhs_forum')
-            ->where('COLUMN_NAME', 'slug')->exists();
+        $createdAtSql = $this->sqlLocalCreatedAt('f.created_at');
 
-        $selectIdAdmin = $hasIdAdmin ? 'f.id_admin' : 'NULL';
-        $selectSlug    = $hasSlug ? 'f.slug' : 'f.id';
-
-        $rows = DB::table('tbhs_forum as f')
+        $rows = Forumaudit::query()
+            ->from('tbhs_forum as f')
             ->selectRaw("
-                $selectSlug                                   AS slug,
-                f.id                                          AS topik_id,
-                TRIM(f.topik_title)                           AS topik_title,
-                f.created_for_name                            AS created_for_name,
-                DATE_FORMAT(f.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
-                $selectIdAdmin                                AS id_admin,
-                CASE f.status_case
-                  WHEN 1 THEN 'Open'
-                  WHEN 2 THEN 'Pending'
-                  WHEN 3 THEN 'On Progress'
-                  WHEN 4 THEN 'Close'
-                  ELSE '-'
-                END                                           AS status_text
+                $selectSlug                                     AS slug,
+                f.id                                            AS topik_id,
+                TRIM(f.topik_title)                             AS topik_title,
+                f.created_for_name                              AS created_for_name,
+                $createdAtSql                                   AS created_at,
+                $selectAdmin                                    AS id_admin,
+                {$this->statusLabelSql()}                       AS status_text
             ")
             ->where('f.soft_delete', '0')
             ->where('f.periode', $periodeAktif)
             ->whereIn('f.status_case', $statusScope)
             ->orderByDesc('f.created_at')
+            ->toBase()
             ->get();
 
         return response()->json(['data' => $rows]);
