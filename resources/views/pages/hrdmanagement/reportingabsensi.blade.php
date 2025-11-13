@@ -53,7 +53,7 @@
                 </select>
 
                 <button type="button" id="btn-generate" class="btn btn-sm btn-primary">
-                    Generate Report Semua
+                    Generate Report
                 </button>
                 <button type="button" id="btn-export" class="btn btn-sm btn-success ml-2">
                     Export Excel

@@ -509,7 +509,7 @@
                             stacked: true,
                             beginAtZero: true,
                             // paksa maksimum skala, misal 10 orang
-                            max: 5,                 // 🔹 atau 5 / 20 terserah kebutuhan
+                            max: 10,                 // 🔹 atau 5 / 20 terserah kebutuhan
                             ticks: {
                                 stepSize: 1       // biar tiap 1 orang
                             },

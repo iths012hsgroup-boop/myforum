@@ -171,7 +171,7 @@
                                     @if (in_array('HSF011', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('oldperiode.auditorclosedcasesreport') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fas fa-archive"></i>
                                                 <p>Data Periode Lama</p>
                                             </a>
                                         </li>
@@ -181,7 +181,7 @@
                                     @if (in_array('HSF012', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('reporting.index') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fa-solid fa-book-open"></i>
                                                 <p>Reporting Periode</p>
                                             </a>
                                         </li>
@@ -206,7 +206,7 @@
                                     @if (in_array('HSF003', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('daftarsitus.index') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fas fa-list-alt"></i>
                                                 <p>Daftar Situs</p>
                                             </a>
                                         </li>
@@ -216,7 +216,7 @@
                                     @if (in_array('HSF004', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('daftarjabatan.index') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fas fa-users-cog"></i>
                                                 <p>Daftar Jabatan</p>
                                             </a>
                                         </li>
@@ -226,7 +226,7 @@
                                     @if (in_array('HSF005', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('daftaruser.index') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fas fa-users"></i>
                                                 <p>Daftar Staff</p>
                                             </a>
                                         </li>
@@ -236,7 +236,7 @@
                                     @if (in_array('HSF018', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('topik.index') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fas fa-tags"></i>
                                                 <p>Topik</p>
                                             </a>
                                         </li>
@@ -246,7 +246,7 @@
                                     @if (in_array('HSF009', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('migrasidb.index') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fa-solid fa-arrow-right-arrow-left"></i>
                                                 <p>Migrasi User</p>
                                             </a>
                                         </li>
@@ -256,7 +256,7 @@
                                     @if (in_array('HSF010', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('resetpassword.resetpwd') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fa-solid fa-lock-open"></i>
                                                 <p>Reset Password</p>
                                             </a>
                                         </li>
@@ -266,7 +266,7 @@
                                     @if (in_array('HSF006', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('setting.index') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fa-solid fa-rss"></i>
                                                 <p>Setting Pengumuman</p>
                                             </a>
                                         </li>
@@ -276,7 +276,7 @@
                                     @if (in_array('HSF013', (array) $allowed))
                                         <li class="nav-item">
                                             <a href="{{ route('periodessetting.setting') }}" class="nav-link">
-                                                <i class="far fa-circle nav-icon"></i>
+                                                <i class="nav-icon fa-solid fa-gear"></i>
                                                 <p>Settings Periode</p>
                                             </a>
                                         </li>

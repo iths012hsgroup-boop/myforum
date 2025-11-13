@@ -15,6 +15,8 @@ use App\Http\Controllers\MigratedbController;
 use App\Http\Controllers\OtherController;
 use App\Http\Controllers\HsForumController;
 use App\Http\Controllers\HrdManagementController;
+use App\Http\Controllers\HrdGrafikController;
+use App\Http\Controllers\HrdReportingController;
 use App\Http\Controllers\AbsensiController;
 /*
 |--------------------------------------------------------------------------
@@ -51,36 +53,39 @@ Route::middleware('auth')->prefix('dashboard')->as('dashboard.')->group(function
 });
 
 /* =========================
-   HRD MANAGEMENT
+   HRD MANAGEMENT (CRUD absensi & staff)
    ========================= */
 Route::prefix('hrdmanagement')->as('hrdmanagement.')->controller(HrdManagementController::class)->group(function () {
-    Route::get('/', 'index')->name('index'); 
-    Route::put('absensi/{id}', 'updateAbsensi')->name('absensi.update'); 
-    Route::post('absensi/save', 'storeAbsensi')->name('absensi.save'); 
-    Route::get('absensi/list', 'listAbsensi')->name('absensi.list');
-    Route::delete('absensi/{id}', 'destroyAbsensi')->name('absensi.destroy');
-    Route::get('absensi/check-duplicate', 'checkAbsensiDuplicate')->name('absensi.check_duplicate');
-    Route::get('staff/data', 'staffData')->name('staff.data');
-    Route::get('report-absensi', 'reportingAbsensi')->name('reportingabsensi');
-    Route::get('report-absensi/data', 'getReportingAbsensiData')->name('reportingabsensi.data');
-    Route::post('report-absensi/generate', 'generateAbsensiReport')->name('reportingabsensi.generate');
-    Route::get('report-absensi/export', 'exportAbsensiReport')->name('reportingabsensi.export');
-    Route::get('grafik', 'grafik')->name('grafik');
-    Route::get('absensi/detail', 'detailAbsensi')->name('absensi.detail');    // ➜ baru, semua data
-    Route::get('grafik/detail-absensi', 'grafikDetailAbsensi')->name('grafik.detail');
-    Route::get('grafik/detail-situs', 'grafikDetailSitus')->name('grafik.diagram_detail');
-    Route::get('grafik/daily-detail', 'grafikDailyDetail')->name('grafik.daily_detail');
-    Route::get('grafik/perbandingan', 'grafikPerbandingan')->name('grafik.perbandingan');
-
-    Route::get('grafik/compare-data', 'grafikCompareData')->name('grafik.compare_data'); // 🔹 baru
+    Route::get('/',                      'index')->name('index');
+    Route::put('absensi/{id}',           'updateAbsensi')->name('absensi.update');
+    Route::post('absensi/save',          'storeAbsensi')->name('absensi.save');
+    Route::get('absensi/list',           'listAbsensi')->name('absensi.list');
+    Route::delete('absensi/{id}',        'destroyAbsensi')->name('absensi.destroy');
+    Route::get('absensi/check-duplicate','checkAbsensiDuplicate')->name('absensi.check_duplicate');
+    Route::get('staff/data',             'staffData')->name('staff.data');
+    Route::get('absensi/detail',         'detailAbsensi')->name('absensi.detail');
 });
 
+/* =========================
+   GRAFIK & PERBANDINGAN
+   ========================= */
+Route::prefix('hrdmanagement')->as('hrdmanagement.')->controller(HrdGrafikController::class)->group(function () {
+    Route::get('grafik',                'index')->name('grafik');                 // <-- ini yang dicari
+    Route::get('grafik/detail-absensi', 'detailAbsensi')->name('grafik.detail');
+    Route::get('grafik/detail-situs',   'diagramDetail')->name('grafik.diagram_detail');
+    Route::get('grafik/daily-detail',   'dailyDetail')->name('grafik.daily_detail');
+    Route::get('grafik/perbandingan',   'index')->name('grafik.perbandingan');   // kompat lama
+    Route::get('grafik/compare-data',   'compareData')->name('grafik.compare_data');
+});
 
 /* =========================
-   Absensi
+   REPORTING ABSENSI
    ========================= */
-Route::prefix('formauditor')->middleware('auth')->group(function () {
-    Route::get('/absensi', [AbsensiController::class, 'index'])->name('formauditor.absensi');
+Route::prefix('hrdmanagement')->as('hrdmanagement.')->controller(HrdReportingController::class)->group(function () {
+    Route::get('report-absensi',           'reportingAbsensi')->name('reportingabsensi');
+    Route::get('report-absensi/data',      'getReportingAbsensiData')->name('reportingabsensi.data');
+    Route::post('report-absensi/generate', 'generateAbsensiReport')->name('reportingabsensi.generate');
+    Route::get('report-absensi/export',    'exportAbsensiReport')->name('reportingabsensi.export');
 });
 
 
