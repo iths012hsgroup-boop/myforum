@@ -61,7 +61,6 @@
       }
     };
 
-    // ===== variabel dari Controller =====
     const auditorDetailUrlTemplate = @json($auditorDetailUrlTemplate);
     const dtAjaxUrl    = @json($dtAjaxUrl);
     const dtAjaxParams = @json($dtAjaxParams);
@@ -87,7 +86,6 @@
         { data: 'status_text', render: (v) => toBadge(v) },
         { data: null, render: (row) => row.id_auditor ?? row.id_admin ?? '' },
 
-        // >>>>> ACTION: tombol Comment selalu tampil
         {
           data: null, orderable: false, searchable: false,
           render: (row) => {
@@ -97,9 +95,6 @@
             const slug = row.slug ?? row.topik_id;
             let href   = auditorDetailUrlTemplate.replace('__SLUG__', encodeURIComponent(slug));
 
-            // param ke halaman detail:
-            // - closed       -> comment=0 (form disembunyikan)
-            // - non-closed   -> comment=1 + auto-scroll ke form
             const params = new URLSearchParams({
               from: 'dashboard',
               comment: isClosed ? 0 : 1

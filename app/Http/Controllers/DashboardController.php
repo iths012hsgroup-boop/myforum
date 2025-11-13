@@ -27,10 +27,8 @@ class DashboardController extends Controller
     }
 
     /**
-     * Ekspresi SQL untuk normalisasi judul:
-     * - NULL => '' ; hilangkan NBSP/TAB/LF/CR ; TRIM; UPPER (opsional).
-     * @param bool   $upper apakah di-UPPER
-     * @param string $col   kolom sumber, default f.topik_title
+     * @param bool
+     * @param string
      */
     public function normalizedTitleExpr(bool $upper = true, string $col = 'f.topik_title'): string
     {

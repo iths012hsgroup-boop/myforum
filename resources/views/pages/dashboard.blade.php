@@ -5,11 +5,10 @@
 <style>
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 
-/* Kartu dengan --ratio */
 .stat-card{
   --ratio: 0;
-  --h: calc((1 - var(--ratio)) * 120); /* 120=green → 0=red */
-  --s: 85%;
+  --h: calc((1 - var(--ratio)) * 120);
+  --s: 90%;
   --l: 50%;
   background: hsl(var(--h) var(--s) var(--l));
   color:#111;
@@ -25,22 +24,20 @@
 .stat-card .count{ font:700 28px/1.1 system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial; }
 .stat-card .title{ margin-top:4px; font-weight:600; }
 
-/* STRIP: default (teks gelap, panel terang tipis) */
 .stat-card .more-strip{
   margin-top:10px;
   display:flex; justify-content:space-between; align-items:center;
   font-weight:600; text-decoration:none;
-  color:#111;                              /* ❗ tidak mewarisi dari kartu */
+  color:#111;
   background: rgba(255,255,255,.55);
   border-radius:10px; padding:8px 10px;
 }
 .stat-card .more-strip .icon{ transform: translateX(0); transition: transform .12s ease; opacity:.9; }
 .stat-card:hover .more-strip .icon{ transform: translateX(2px); }
 
-/* STRIP saat kartu gelap (ratio tinggi) → panel sedikit lebih gelap agar kontras */
 .stat-card.text-light .more-strip{
   background: rgba(255,255,255,.22);
-  color:#111;                              /* tetap gelap sesuai keinginan */
+  color:#111;
 }
 </style>
 @endpush

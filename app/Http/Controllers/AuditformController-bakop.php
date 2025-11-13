@@ -1531,27 +1531,6 @@ class AuditformController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function post($slug, Request $request)
-    {
-        $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
-        if ($akses[0]->nilai == 0) {
-            return view('error');
-        }
-
-        $periodes = SettingPeriode::all();
-        $dataforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $dataforumauditpost = Forumauditpost::where('slug',$dataforumaudit->slug)->where('parent_forum_id',$dataforumaudit->id)->where('parent_case_id',$dataforumaudit->case_id)->orderBy('id','ASC')->get();
-
-        return view('pages.formauditor.posting')->with([
-            "dataforumaudit" => $dataforumaudit,
-            "dataforumauditpost" => $dataforumauditpost,
-            "periodes" => $periodes,
-        ]);
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function auditorpost($slug, Request $request)
     {
         $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));

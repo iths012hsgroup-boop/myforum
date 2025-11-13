@@ -158,7 +158,7 @@
                         {{-- REPORTING --}}
                         @if (in_array('HSF020', (array) $allowed))
                             <li class="nav-item has-treeview">
-                                <a href="#" class="nav-link">
+                                <a href="javascript:void(0)" class="nav-link">
                                     <i class="nav-icon fa-solid fa-book"></i>
                                     <p>
                                         Reporting
@@ -193,7 +193,7 @@
                         {{-- CONFIGURE --}}
                         @if (in_array('HSF021', (array) $allowed))
                             <li class="nav-item has-treeview">
-                                <a href="#" class="nav-link">
+                                <a href="javascript:void(0)" class="nav-link">
                                     <i class="nav-icon fa-solid fa-gear"></i>
                                     <p>
                                         Configure
