@@ -66,7 +66,11 @@
                             <div class="card-image">
                                 <center>
                                     <a href="#" data-toggle="modal" data-target="#imagemodal">
-                                        <img src="{{ $datadetailforumaudit->link_gambar ? '/storage/'.$datadetailforumaudit->link_gambar : '' }}" alt="" style="width: 100%; max-height: 150px; border-radius: 5px 5px 0px 0px;">
+                                        @if(!empty($imageUrl))
+                                            <img src="{{ $imageUrl }}" alt="Lampiran" style="width: 100%; max-height: 150px; border-radius: 5px 5px 0 0;">
+                                        @else
+                                            <div class="text-muted small">Tidak ada gambar</div>
+                                        @endif                                   
                                     </a>
                                 </center>
                             </div>
@@ -127,7 +131,9 @@
             <div class="modal-content">
                 <div class="modal-body">
                     <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-                    <img src="{{ $datadetailforumaudit->link_gambar ? '/storage/'.$datadetailforumaudit->link_gambar : '' }}" style="width: 100%;" >
+                    @if(!empty($imageUrl))
+                        <img src="{{ $imageUrl }}" style="width: 100%;">
+                    @endif                
                 </div>
             </div>
         </div>

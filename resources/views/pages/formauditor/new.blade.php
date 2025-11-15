@@ -221,6 +221,9 @@
 
             <div class="form-group">
                 <label for="link_gambar">Upload Gambar <span>*</span></label>
+                <small class="form-text text-muted">
+                    Kamu juga bisa paste gambar langsung dari clipboard (Ctrl+V) setelah copy screenshot.
+                </small>
                 <input
                     type="file"
                     class="dropify"
@@ -333,5 +336,71 @@
             }
         });
     });
+
+
+    $(document).ready(function() {
+    $('.dropify').dropify();
+    $('#summernote').summernote({ height: 300 });
+
+    // ====== PASTE IMAGE KE INPUT #link_gambar ======
+    $(document).on('paste', function (e) {
+        // kalau fokus di Summernote, biarin Summernote yang handle paste
+        const active = document.activeElement;
+        if ($(active).closest('.note-editor').length) {
+            return;
+        }
+
+        const clipboardData = e.originalEvent.clipboardData || e.clipboardData;
+        if (!clipboardData || !clipboardData.items) return;
+
+        let file = null;
+        for (let i = 0; i < clipboardData.items.length; i++) {
+            const item = clipboardData.items[i];
+            if (item.kind === 'file' && item.type.indexOf('image') === 0) {
+                file = item.getAsFile();
+                break;
+            }
+        }
+
+        if (!file) return; // tidak ada image di clipboard
+
+        // buat DataTransfer untuk set input.files
+        const dt = new DataTransfer();
+        dt.items.add(file);
+
+        const input = document.getElementById('link_gambar');
+        if (!input) return;
+
+        input.files = dt.files;
+
+        // trigger change supaya Dropify update preview
+        $(input).trigger('change');
+
+        // optional: kasih notifikasi kecil
+        console.log('Gambar dari clipboard dimasukkan ke input file.');
+    });
+
+    // ====== kode kamu yg lama di bawah ini tetap ======
+    // Jadikan dropdown Topik searchable
+    if ($.fn.select2) {
+        $('#topik_title').select2({
+            theme: 'bootstrap4',
+            placeholder: '-- Silakan Pilih Topik --',
+            allowClear: true,
+            width: '100%'
+        });
+    }
+
+    // Generate case_id sederhana (YYYYMMDDHHMMSS)
+    var d = new Date();
+    var pad = n => (n < 10 ? '0' + n : '' + n);
+    var caseid = d.getFullYear()
+                + pad(d.getMonth()+1)
+                + pad(d.getDate())
+                + pad(d.getHours())
+                + pad(d.getMinutes())
+                + pad(d.getSeconds());
+    document.getElementById("case_id").value = caseid;
+});
 </script>
 @endpush

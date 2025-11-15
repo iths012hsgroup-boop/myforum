@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Forumaudit;   // tbhs_forum
-use App\Models\User;         // tbhs_users
+use App\Models\Forumaudit;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;

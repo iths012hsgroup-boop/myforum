@@ -21,8 +21,8 @@ class Forumaudit extends Model
     protected $casts = [
         'status_case'      => 'integer',
         'status_kesalahan' => 'integer',
-        'created_for'      => 'integer',
-        'created_by'       => 'integer',
+        'created_for' => 'string',
+        'created_by'  => 'string',
         'soft_delete'      => 'integer',
         'recovery_by'      => 'integer',
         'created_at'       => 'datetime',

@@ -305,6 +305,7 @@ class ReportingController extends Controller
         return $destroy ? response()->json(['success' => true, 'message' => 'Data berhasil dihapus']) : response()->json(['success' => false, 'message' => 'Gagal hapus! Silakan hubungi Administrator']);
     }
 
+
     public function generateReport(Request $request)
     {
         
@@ -369,6 +370,7 @@ class ReportingController extends Controller
         return response()->json(['success' => true, 'message' => 'Laporan berhasil dibuat.']);
     }
 
+    
     public function exportReport(Request $request)
     {
         $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));

@@ -52,6 +52,7 @@ Route::middleware('auth')->prefix('dashboard')->as('dashboard.')->group(function
     Route::get('/all-cases',   [DashboardController::class, 'allCases'])->name('allCases');
 });
 
+
 /* =========================
    HRD MANAGEMENT (CRUD absensi & staff)
    ========================= */
@@ -66,6 +67,7 @@ Route::prefix('hrdmanagement')->as('hrdmanagement.')->controller(HrdManagementCo
     Route::get('absensi/detail',         'detailAbsensi')->name('absensi.detail');
 });
 
+
 /* =========================
    GRAFIK & PERBANDINGAN
    ========================= */
@@ -77,6 +79,7 @@ Route::prefix('hrdmanagement')->as('hrdmanagement.')->controller(HrdGrafikContro
     Route::get('grafik/perbandingan',   'index')->name('grafik.perbandingan');   // kompat lama
     Route::get('grafik/compare-data',   'compareData')->name('grafik.compare_data');
 });
+
 
 /* =========================
    REPORTING ABSENSI
@@ -101,6 +104,7 @@ Route::prefix('daftarsitus')->as('daftarsitus.')->controller(SitusController::cl
     Route::delete('/remove', 'destroy')->name('destroy');
 });
 
+
 /* =========================
    Master: Jabatan
    ========================= */
@@ -112,6 +116,7 @@ Route::prefix('daftarjabatan')->as('daftarjabatan.')->controller(JabatanControll
     Route::post('/update', 'update')->name('update');
     Route::delete('/remove', 'destroy')->name('destroy');
 });
+
 
 /* =========================
    Master: User

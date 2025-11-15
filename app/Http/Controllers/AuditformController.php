@@ -619,8 +619,7 @@ class AuditformController extends Controller
             'created_by'       => 'required',
             'created_by_name'  => 'required',
             'site_situs'       => 'required',
-            'status_case'      => 'required',       // boleh kirim "Open" dkk, akan dinormalisasi
-            // 'status_kesalahan' tidak wajib saat create
+            'status_case'      => 'required',
         ]);
 
         if ($validator->fails()) {
@@ -630,7 +629,15 @@ class AuditformController extends Controller
         // Upload gambar (kalau ada)
         $path = null;
         if ($request->hasFile('link_gambar')) {
-            $path = ImagesUpload::upload($request->file('link_gambar'), 'gambar_topik/');
+
+            // contoh: "Jakarta Pusat 1" -> "jakarta-pusat-1"
+            $siteFolder = Str::slug($request->site_situs);
+
+            // hasil folder: "gambar_topik/jakarta-pusat-1/"
+            $location = 'hsforum/'.$siteFolder.'/';
+
+            // upload ke DO Spaces, return PATH saja (bukan URL)
+            $path = ImagesUpload::upload($request->file('link_gambar'), $location, 'spaces');
         }
 
         // Normalisasi status
@@ -641,11 +648,14 @@ class AuditformController extends Controller
             'slug'              => substr(str_shuffle(md5(time())), 0, 25),
             'case_id'           => $request->case_id,
             'topik_title'       => $request->topik_title,
+
+            // disimpan PATH, contoh: "uploads/gambar_topik/jakarta-pusat-1/xxxxx.jpg"
             'link_gambar'       => $path,
+
             'topik_deskripsi'   => $request->topik_deskripsi,
-            'created_for'       => (int) $request->created_for,   // jangan strtolower untuk ID numerik
+            'created_for'       => $request->created_for,
             'created_for_name'  => $request->created_for_name,
-            'created_by'        => (int) $request->created_by,
+            'created_by'        => $request->created_by,
             'created_by_name'   => $request->created_by_name,
             'site_situs'        => $request->site_situs,
             'status_case'       => $statusCase,
@@ -657,6 +667,8 @@ class AuditformController extends Controller
             ? redirect()->route('auditorforum.new')->with('success', 'Data berhasil disimpan')
             : redirect()->back()->with('danger', 'Gagal simpan! Silakan hubungi Administrator');
     }
+
+
 
     public function opencases(Builder $builder, Request $request)
     {
@@ -670,8 +682,26 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','1')->where('status_kesalahan','0')->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -751,7 +781,27 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -803,8 +853,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','2')->where('status_kesalahan','0')->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -883,7 +954,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -935,8 +1029,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','2')->where('status_kesalahan','1')->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1016,7 +1131,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -1068,8 +1206,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','2')->whereIn('status_kesalahan',[2,3,4])->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1149,7 +1308,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -1201,8 +1383,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','3')->whereIn('status_kesalahan', [0,1,2,3,4])->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1283,7 +1486,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -1338,8 +1564,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','4')->where('status_kesalahan','1')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1424,7 +1671,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -1479,8 +1749,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','4')->where('status_kesalahan','2')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1564,7 +1855,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -1620,8 +1934,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','4')->where('status_kesalahan','3')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1705,7 +2040,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -1760,8 +2118,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('created_for', auth()->user()->id_admin)->where('created_for_name', auth()->user()->nama_staff)->where('status_case','4')->where('status_kesalahan','4')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1845,7 +2224,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row){
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -1897,8 +2299,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','1')->where('status_kesalahan','0')->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah URL penuh (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        // Coba lewat disk CDN 'spaces' dulu
+                        try {
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // Kalau disk 'spaces' belum diset / error → fallback ke storage default
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -1952,8 +2375,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','2')->where('status_kesalahan','0')->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2007,8 +2451,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','2')->where('status_kesalahan','1')->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2062,8 +2527,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','2')->whereIn('status_kesalahan',[2,3,4])->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2117,8 +2603,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','3')->whereIn('status_kesalahan',[0,1,2,3,4])->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2178,8 +2685,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','4')->where('status_kesalahan','1')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2255,8 +2783,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','4')->where('status_kesalahan','2')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2332,8 +2881,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','4')->where('status_kesalahan','3')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2409,8 +2979,29 @@ class AuditformController extends Controller
             return DataTables::of(Forumaudit::where('status_case','4')->where('status_kesalahan','4')->where('periode', $periodeFilter)->where('soft_delete','0'))
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -2511,7 +3102,30 @@ class AuditformController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
-                    return '<img src="' . Storage::url($model->link_gambar) . '" class="img-responsive" style="width : 200px"/>';
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    // Kalau sudah full URL (CDN / domain lain)
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        $url = $raw;
+                    } else {
+                        try {
+                            // kalau pakai CDN (DigitalOcean Spaces / S3) dengan disk "spaces"
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
+                    return '
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
+                    ';
                 })
                 ->addColumn('created_at', function ($row) {
                     return $row->created_at->format('Y-m-d H:i:s');
@@ -2606,97 +3220,165 @@ class AuditformController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function post($slug, Request $request)
-    {
-        $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
-        if ($akses[0]->nilai == 0) {
-            return view('error');
-        }
 
-        $periodes = SettingPeriode::all();
-        $dataforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $dataforumauditpost = Forumauditpost::where('slug', $dataforumaudit->slug)
-            ->where('parent_forum_id', $dataforumaudit->id)
-            ->where('parent_case_id', $dataforumaudit->case_id)
-            ->orderBy('id', 'ASC')
-            ->get();
+public function post(string $slug)
+{
+    $dataforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
 
-        // ⇩ Pindahan dari Blade
-        $canUpdateStatus = Privilegeaccess::where('id_admin', $request->user()->id_admin)
-            ->where('menu_id', 'HSF008')
-            ->exists();
+    $dataforumauditpost = Forumauditpost::where('slug', $dataforumaudit->slug)
+        ->where('parent_forum_id', $dataforumaudit->id)
+        ->where('parent_case_id', $dataforumaudit->case_id)
+        ->orderBy('created_at', 'asc')
+        ->get();
 
-        $imgUrl = $dataforumaudit->link_gambar ? Storage::url($dataforumaudit->link_gambar) : '';
+    $canUpdateStatus = Privilegeaccess::where('id_admin', auth()->user()->id_admin)
+        ->where('menu_id', 'HSF008')
+        ->exists();
 
-        return view('pages.formauditor.opposting')->with([
-            'dataforumaudit'     => $dataforumaudit,
-            'dataforumauditpost' => $dataforumauditpost,
-            'periodes'           => $periodes,
-            'canUpdateStatus'    => $canUpdateStatus,
-            'imgUrl'             => $imgUrl,
-        ]);
+    $periodes = SettingPeriode::orderBy('tahun')->orderBy('periode')->get();
+
+    $periodeOptions = $periodes->map(function ($p) use ($dataforumaudit) {
+        $value = $p->tahun . $p->periode;
+        return (object) [
+            'value'    => $value,
+            'label'    => $p->bulan_dari . ' - ' . $p->bulan_ke,
+            'selected' => $dataforumaudit->periode === $value,
+        ];
+    });
+
+    $imgUrl = $dataforumaudit->link_gambar ? Storage::url($dataforumaudit->link_gambar) : '';
+
+    return view('pages.formauditor.posting', [
+        'dataforumaudit'     => $dataforumaudit,
+        'dataforumauditpost' => $dataforumauditpost,
+        'canUpdateStatus'    => $canUpdateStatus,
+        'imgUrl'             => $imgUrl,
+        'periodeOptions'     => $periodeOptions,
+    ]);
+}
+
+
+public function postOP($slug, Request $request)
+{
+    $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
+    if ($akses[0]->nilai == 0) {
+        return view('error');
     }
 
-    public function postOP($slug, Request $request)
-    {
-        $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
-        if ($akses[0]->nilai == 0) {
-            return view('error');
+    // ambil daftar periode
+    $periodes = SettingPeriode::orderBy('tahun')->orderBy('periode')->get();
+
+    $dataforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
+
+    $dataforumauditpost = Forumauditpost::where('slug', $dataforumaudit->slug)
+        ->where('parent_forum_id', $dataforumaudit->id)
+        ->where('parent_case_id', $dataforumaudit->case_id)
+        ->orderBy('id', 'ASC')
+        ->get();
+
+    // ⇩ Pindahan dari Blade
+    $canUpdateStatus = Privilegeaccess::where('id_admin', $request->user()->id_admin)
+        ->where('menu_id', 'HSF008')
+        ->exists();
+
+    // 🔹 BANGUN $periodeOptions (sama pola dengan comments())
+    $periodeOptions = $periodes->map(function ($p) use ($dataforumaudit) {
+        $value = $p->tahun . $p->periode; // contoh: 20241
+
+        return (object) [
+            'value'    => $value,
+            'label'    => $p->bulan_dari . ' - ' . $p->bulan_ke,
+            'selected' => $dataforumaudit->periode === $value,
+        ];
+    });
+
+    // === BIKIN URL GAMBAR YANG ROBUST + CDN ===
+    $imgUrl = '';
+    $raw = ltrim((string) ($dataforumaudit->link_gambar ?? ''), '/');
+
+    if ($raw !== '') {
+        if (Str::startsWith($raw, ['http://', 'https://'])) {
+            // Kalau sudah full URL (misal sudah CDN), pakai apa adanya
+            $imgUrl = $raw;
+        } else {
+            // Kalau cuma path file, generate URL dari disk 'spaces' (CDN)
+            $imgUrl = Storage::disk('spaces')->url($raw);
         }
-
-        $periodes = SettingPeriode::all();
-        $dataforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $dataforumauditpost = Forumauditpost::where('slug', $dataforumaudit->slug)
-            ->where('parent_forum_id', $dataforumaudit->id)
-            ->where('parent_case_id', $dataforumaudit->case_id)
-            ->orderBy('id', 'ASC')
-            ->get();
-
-        // ⇩ Pindahan dari Blade
-        $canUpdateStatus = Privilegeaccess::where('id_admin', $request->user()->id_admin)
-            ->where('menu_id', 'HSF008')
-            ->exists();
-
-        $imgUrl = $dataforumaudit->link_gambar ? Storage::url($dataforumaudit->link_gambar) : '';
-
-        return view('pages.formauditor.opposting')->with([
-            'dataforumaudit'     => $dataforumaudit,
-            'dataforumauditpost' => $dataforumauditpost,
-            'periodes'           => $periodes,
-            'canUpdateStatus'    => $canUpdateStatus,
-            'imgUrl'             => $imgUrl,
-        ]);
     }
+
+    return view('pages.formauditor.opposting')->with([
+        'dataforumaudit'     => $dataforumaudit,
+        'dataforumauditpost' => $dataforumauditpost,
+        'periodes'           => $periodes,        // boleh dipakai kalau masih dibutuhkan
+        'periodeOptions'     => $periodeOptions,  // ✅ ini yang dipakai Blade baru
+        'canUpdateStatus'    => $canUpdateStatus,
+        'imgUrl'             => $imgUrl,
+    ]);
+}
+
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function auditorpost($slug, Request $request)
-    {
-        $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
-        if ((int) data_get($akses, '0.nilai', 0) === 0) {
-            return view('error');
-        }
-
-        $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $datadetailforumauditpost = Forumauditpost::where('slug', $datadetailforumaudit->slug)
-            ->where('parent_forum_id', $datadetailforumaudit->id)
-            ->where('parent_case_id', $datadetailforumaudit->case_id)
-            ->orderBy('id','ASC')
-            ->get();
-
-        // URL gambar siap pakai
-        $imageUrl = !empty($datadetailforumaudit->link_gambar)
-            ? asset('storage/'.$datadetailforumaudit->link_gambar)
-            : '';
-
-        return view('pages.formauditor.auditorposting')->with([
-            'datadetailforumaudit'     => $datadetailforumaudit,
-            'datadetailforumauditpost' => $datadetailforumauditpost,
-            'imageUrl' => $imageUrl,  // ← penting
-            'imgUrl'   => $imageUrl,  // ← alias kalau Blade lama masih pakai
-        ]);
+public function auditorpost($slug, Request $request)
+{
+    $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
+    if ((int) data_get($akses, '0.nilai', 0) === 0) {
+        return view('error');
     }
+
+    // ➕ Cek privilege HSF008 sama seperti di post() & postOP()
+    $canUpdateStatus = Privilegeaccess::where('id_admin', $request->user()->id_admin)
+        ->where('menu_id', 'HSF008')
+        ->exists();
+
+    $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
+
+    $datadetailforumauditpost = Forumauditpost::where('slug', $datadetailforumaudit->slug)
+        ->where('parent_forum_id', $datadetailforumaudit->id)
+        ->where('parent_case_id', $datadetailforumaudit->case_id)
+        ->orderBy('id','ASC')
+        ->get();
+
+    // 🔹 ambil daftar periode
+    $periodes = SettingPeriode::orderBy('tahun')->orderBy('periode')->get();
+
+    // 🔹 bangun $periodeOptions (menggunakan periode milik forum ini)
+    $periodeOptions = $periodes->map(function ($p) use ($datadetailforumaudit) {
+        $value = $p->tahun . $p->periode;
+
+        return (object) [
+            'value'    => $value,
+            'label'    => $p->bulan_dari . ' - ' . $p->bulan_ke,
+            'selected' => $datadetailforumaudit->periode === $value,
+        ];
+    });
+
+    // === URL gambar siap pakai (lokal / CDN) ===
+    $imageUrl = '';
+    $raw = ltrim((string) ($datadetailforumaudit->link_gambar ?? ''), '/');
+
+    if ($raw !== '') {
+        if (Str::startsWith($raw, ['http://', 'https://'])) {
+            // Kalau sudah full URL (mis: CDN), pakai langsung
+            $imageUrl = $raw;
+        } else {
+            // Kalau cuma simpan path file (mis: upload ke Spaces)
+            $imageUrl = Storage::disk('spaces')->url($raw);
+        }
+    }
+
+    return view('pages.formauditor.auditorposting')->with([
+        'datadetailforumaudit'     => $datadetailforumaudit,
+        'datadetailforumauditpost' => $datadetailforumauditpost,
+        'imageUrl'                 => $imageUrl,
+        'imgUrl'                   => $imageUrl,
+        'canUpdateStatus'          => $canUpdateStatus,
+        'periodes'                 => $periodes,        // optional
+        'periodeOptions'           => $periodeOptions,  // ✅ penting
+    ]);
+}
+
 
     private function normalizeStatusCase($val): ?int
     {
@@ -2809,13 +3491,42 @@ class AuditformController extends Controller
         }
 
         $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $datadetailforumauditpost = Forumauditpost::where('slug',$datadetailforumaudit->slug)->where('parent_forum_id',$datadetailforumaudit->id)->where('parent_case_id',$datadetailforumaudit->case_id)->orderBy('id','ASC')->get();
+
+        $datadetailforumauditpost = Forumauditpost::where('slug', $datadetailforumaudit->slug)
+            ->where('parent_forum_id', $datadetailforumaudit->id)
+            ->where('parent_case_id', $datadetailforumaudit->case_id)
+            ->orderBy('id','ASC')
+            ->get();
+
+        // ==== URL gambar (CDN / storage lokal) ====
+        $imageUrl = '';
+        $raw = ltrim((string) ($datadetailforumaudit->link_gambar ?? ''), '/');
+
+        if ($raw !== '') {
+            if (Str::startsWith($raw, ['http://', 'https://'])) {
+                // sudah full URL
+                $imageUrl = $raw;
+            } elseif (Str::startsWith($raw, 'storage/')) {
+                // path lama: storage/...
+                $imageUrl = '/'.$raw;
+            } else {
+                // path file di disk (mis Spaces)
+                $raw = preg_replace('#^public/#', '', $raw);
+                try {
+                    $imageUrl = Storage::disk('spaces')->url($raw); // CDN
+                } catch (\Throwable $e) {
+                    $imageUrl = Storage::url($raw); // fallback /storage/...
+                }
+            }
+        }
 
         return view('pages.formauditor.postdetails')->with([
-            "datadetailforumaudit" => $datadetailforumaudit,
+            "datadetailforumaudit"     => $datadetailforumaudit,
             "datadetailforumauditpost" => $datadetailforumauditpost,
+            "imageUrl"                 => $imageUrl,
         ]);
     }
+
 
     /**
      * Show the details.
@@ -2851,17 +3562,31 @@ class AuditformController extends Controller
         $statusCaseText = $statusCaseMap[(int) ($detail->status_case ?? 0)]
             ?? (string) ($detail->status_case ?? '-');
 
-        // Siapkan URL gambar (robust)
+        // Siapkan URL gambar (robust + CDN)
         $imageUrl = '';
         $raw = ltrim((string) ($detail->link_gambar ?? ''), '/');
+
         if ($raw !== '') {
-            if (Str::startsWith($raw, ['http://','https://'])) {
+            if (Str::startsWith($raw, ['http://', 'https://'])) {
+                // Sudah full URL (bisa CDN lama atau link eksternal)
                 $imageUrl = $raw;
+
             } elseif (Str::startsWith($raw, 'storage/')) {
-                $imageUrl = '/'.$raw;
+                // Data lama yang sudah disimpan sebagai "/storage/...."
+                $imageUrl = '/' . $raw;
+
             } else {
+                // Data baru: hanya path file (misal "hsforum/xxx.jpg")
+                // -> arahkan ke CDN (disk "spaces")
                 $raw = preg_replace('#^public/#', '', $raw);
-                $imageUrl = Storage::url($raw); // -> /storage/...
+
+                try {
+                    // kalau disk "spaces" ada
+                    $imageUrl = Storage::disk('spaces')->url($raw);
+                } catch (\Throwable $e) {
+                    // fallback ke storage lokal kalau spaces tidak ada / error
+                    $imageUrl = Storage::url($raw); // /storage/...
+                }
             }
         }
 
@@ -2895,53 +3620,36 @@ class AuditformController extends Controller
         }
 
         $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $datadetailforumauditpost = Forumauditpost::where('slug',$datadetailforumaudit->slug)->where('parent_forum_id',$datadetailforumaudit->id)->where('parent_case_id',$datadetailforumaudit->case_id)->orderBy('id','ASC')->get();
+
+        $datadetailforumauditpost = Forumauditpost::where('slug', $datadetailforumaudit->slug)
+            ->where('parent_forum_id', $datadetailforumaudit->id)
+            ->where('parent_case_id', $datadetailforumaudit->case_id)
+            ->orderBy('id','ASC')
+            ->get();
+
+        $imageUrl = '';
+        $raw = ltrim((string) ($datadetailforumaudit->link_gambar ?? ''), '/');
+
+        if ($raw !== '') {
+            if (Str::startsWith($raw, ['http://', 'https://'])) {
+                $imageUrl = $raw;
+            } elseif (Str::startsWith($raw, 'storage/')) {
+                $imageUrl = '/'.$raw;
+            } else {
+                $raw = preg_replace('#^public/#', '', $raw);
+                try {
+                    $imageUrl = Storage::disk('spaces')->url($raw);
+                } catch (\Throwable $e) {
+                    $imageUrl = Storage::url($raw);
+                }
+            }
+        }
 
         return view('pages.formauditor.oppostdetails')->with([
-            "datadetailforumaudit" => $datadetailforumaudit,
+            "datadetailforumaudit"     => $datadetailforumaudit,
             "datadetailforumauditpost" => $datadetailforumauditpost,
+            "imageUrl"                 => $imageUrl,
         ]);
-    }
-
-    /**
-     * Show the details.
-     */
-    public function auditorpostdetailsreport($slug, Request $request)
-    {
-        $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
-        if ($akses[0]->nilai == 0) {
-            return view('error');
-        }
-
-        $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $datadetailforumauditpost = Forumauditpost::where('slug',$datadetailforumaudit->slug)->where('parent_forum_id',$datadetailforumaudit->id)->where('parent_case_id',$datadetailforumaudit->case_id)->orderBy('id','ASC')->get();
-
-        return view('pages.reporting.auditorpostdetailsreport')->with([
-            "datadetailforumaudit" => $datadetailforumaudit,
-            "datadetailforumauditpost" => $datadetailforumauditpost,
-        ]);
-    }
-
-    public function recovery($slug)
-    {
-        // Cari entitas berdasarkan slug
-        $forum = Forumaudit::where('slug', $slug)->Where('status_case', 4)->first();
-        $user = auth()->user()->id_admin;
-
-        // Jika data tidak ditemukan
-        if (!$forum) {
-            return redirect()->back()->with('error', 'Data tidak ditemukan!');
-        }
-
-        try {
-            // Update kolom status_case menjadi 3
-            $forum->update(['status_case' => 2, 'status_kesalahan' => 0, 'recovery_by' => $user]);
-
-            return redirect()->back()->with('success', 'Data berhasil direcovery!');
-        } catch (\Exception $e) {
-            // Tangani error selama proses update
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat melakukan recovery.');
-        }
     }
 }
 

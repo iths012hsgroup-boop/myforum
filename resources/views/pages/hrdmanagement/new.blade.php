@@ -93,3 +93,38 @@
         </div>
     </div>
 </div>
+
+
+        {{-- MODAL DETAIL RIWAYAT PER STAFF --}}
+        <div class="modal fade" id="detailAbsensiModal" tabindex="-1" role="dialog"
+             aria-labelledby="detailAbsensiModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title" id="detailAbsensiModalLabel">
+                            Riwayat Absensi: <span id="detail_nama_staff"></span>
+                        </h5>
+                        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <table class="table table-bordered table-striped table-hover" id="detailAbsensiTable">
+                            <thead>
+                                <tr>
+                                    <th style="width:5%;">No</th>
+                                    <th>Tanggal</th>
+                                    <th>Nama Situs</th>
+                                    <th>Status</th>
+                                    <th>Periode Cuti</th>
+                                    <th>Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {{-- Diisi via JS --}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>

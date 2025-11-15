@@ -47,71 +47,7 @@
             @if ($filteredUsers->isEmpty())
                 <p>Tidak ada data staff yang terhubung dengan situs ini.</p>
             @endif
-
-            <table class="table table-bordered table-striped table-hover" id="staffTable">
-                <thead>
-                    <tr>
-                        <th style="width: 3%;" class="text-center">No.</th>
-                        <th style="width: 30%;">ID Admin</th>
-                        <th>Nama Staff</th>
-                        <th style="width: 15%;" class="text-center">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{-- Diisi DataTables via Ajax --}}
-                </tbody>
-            </table>
-        </div>
-
-        {{-- MODAL DETAIL RIWAYAT PER STAFF --}}
-        <div class="modal fade" id="detailAbsensiModal" tabindex="-1" role="dialog"
-             aria-labelledby="detailAbsensiModalLabel" aria-hidden="true">
-            <div class="modal-dialog modal-lg" role="document">
-                <div class="modal-content">
-                    <div class="modal-header bg-info text-white">
-                        <h5 class="modal-title" id="detailAbsensiModalLabel">
-                            Riwayat Absensi: <span id="detail_nama_staff"></span>
-                        </h5>
-                        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                    </div>
-                    <div class="modal-body">
-                        <table class="table table-bordered table-striped table-hover" id="detailAbsensiTable">
-                            <thead>
-                                <tr>
-                                    <th style="width:5%;">No</th>
-                                    <th>Tanggal</th>
-                                    <th>Nama Situs</th>
-                                    <th>Status</th>
-                                    <th>Periode Cuti</th>
-                                    <th>Remarks</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {{-- Diisi via JS --}}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- POPUP NOTIFIKASI --}}
-        <div class="modal fade" id="notifModal" tabindex="-1" role="dialog" aria-hidden="true">
-            <div class="modal-dialog modal-sm modal-dialog-centered" role="document">
-                <div class="modal-content">
-                    <div id="notifModalHeader" class="modal-header bg-success text-white py-2">
-                        <h6 class="modal-title mb-0" id="notifModalTitle">Informasi</h6>
-                        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                    </div>
-                    <div class="modal-body py-3">
-                        <p id="notifModalBody" class="mb-0"></p>
-                    </div>
-                </div>
-            </div>
+            {!! $html->table(['class' => 'table table-bordered table-striped table-hover']) !!}
         </div>
 
         {{-- Modal2 pendukung --}}
@@ -120,6 +56,7 @@
 @endsection
 
 @push('scripts')
+    {!! $html->scripts() !!}
 <script>
     $(function () {
         // ================== ROUTES & CONST ==================
@@ -350,64 +287,7 @@
             });
         }
 
-        // ================== DATATABLE STAFF ==================
-        const staffTable = $staffTable.DataTable({
-            processing  : true,
-            serverSide  : false,
-            ajax        : routes.staffData,
-            columns     : [
-                {
-                    data      : null,
-                    orderable : false,
-                    searchable: false,
-                    render    : (data, type, row, meta) => meta.row + 1,
-                },
-                { data: 'id_admin',   name: 'id_admin'   },
-                { data: 'nama_staff', name: 'nama_staff' },
-                {
-                    data      : null,
-                    orderable : false,
-                    searchable: false,
-                    className : 'text-center',
-                    render    : (data, type, row) => `
-                        <button type="button"
-                            class="btn btn-primary btn-sm absensi-baru-btn"
-                            data-id-admin="${row.id_admin}"
-                            data-nama-staff="${row.nama_staff}"
-                            data-id-situs-user="${row.id_situs}"
-                            title="Absensi Baru Hari Ini">
-                            <i class="fas fa-plus"></i> Absensi
-                        </button>
 
-                        <button type="button"
-                            class="btn btn-warning btn-sm edit-absensi-btn"
-                            data-id-admin="${row.id_admin}"
-                            data-nama-staff="${row.nama_staff}"
-                            data-id-situs-user="${row.id_situs}"
-                            title="Edit Absensi Hari Ini">
-                            <i class="fas fa-pencil-alt"></i> Edit
-                        </button>
-
-                        <button type="button"
-                            class="btn btn-info btn-sm detail-absensi-btn"
-                            data-id-admin="${row.id_admin}"
-                            data-nama-staff="${row.nama_staff}"
-                            data-id-situs-user="${row.id_situs}"
-                            title="Lihat Riwayat Absensi">
-                            <i class="fas fa-list"></i> Details
-                        </button>
-                    `,
-                },
-            ],
-            responsive  : true,
-            paging      : true,
-            lengthChange: true,
-            searching   : true,
-            ordering    : true,
-            info        : true,
-            autoWidth   : false,
-            language    : dtLang,
-        });
 
         // ================== DETAIL ABSENSI (RIWAYAT) ==================
         $(document).on('click', '.detail-absensi-btn', function () {
@@ -428,7 +308,15 @@
                     dt.clear();
 
                     if (!res || !res.length) {
-                        dt.row.add(['', 'Tidak ada data absensi.', '', '', '']).draw();
+                        dt.clear();
+                        dt.row.add([
+                            '',                          // No
+                            'Tidak ada data absensi.',   // Tanggal (isi pesan saja)
+                            '',                          // Nama Situs
+                            '',                          // Status
+                            '',                          // Periode Cuti
+                            ''                           // Remarks
+                        ]).draw();
                         return;
                     }
 
@@ -456,7 +344,14 @@
                 error(xhr) {
                     console.log('ERROR DETAIL ABSENSI:', xhr.responseText);
                     dt.clear();
-                    dt.row.add(['', 'Terjadi kesalahan saat memuat data.', '', '', '']).draw();
+                    dt.row.add([
+                        '',                                      // No
+                        'Terjadi kesalahan saat memuat data.',   // Tanggal (isi pesan)
+                        '',                                      // Nama Situs
+                        '',                                      // Status
+                        '',                                      // Periode Cuti
+                        ''                                       // Remarks
+                    ]).draw();
                 },
             });
 

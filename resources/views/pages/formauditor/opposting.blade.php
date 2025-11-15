@@ -69,7 +69,11 @@
                             <div class="card-image">
                                 <center>
                                     <a href="#" data-toggle="modal" data-target="#imagemodal">
-                                        <img src="{{ $dataforumaudit->link_gambar ? '/storage/'.$dataforumaudit->link_gambar : '' }}" alt="" style="width: 100%; max-height: 150px; border-radius: 5px 5px 0px 0px;">
+                                         @if(!empty($imgUrl))
+                                            <img src="{{ $imgUrl }}" alt="Lampiran" style="width: 100%; max-height: 150px; border-radius: 5px 5px 0px 0px;">
+                                        @else
+                                            <span class="text-muted small">Tidak ada gambar</span>
+                                        @endif   
                                     </a>
                                 </center>
                             </div>
@@ -163,11 +167,13 @@
     </div>
     <!-- /.card -->
     <div class="modal fade" id="imagemodal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-        <div class="modal-dialog" style="max-width: 1920px!important;">
+        <div class="modal-dialog" style="max-width: 1500px!important;">
             <div class="modal-content">
                 <div class="modal-body">
                     <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
-                    <img src="{{ $dataforumaudit->link_gambar ? '/storage/'.$dataforumaudit->link_gambar : '' }}" style="width: 100%;" >
+                    @if(!empty($imgUrl))
+                        <img src="{{ $imgUrl }}" style="width: 100%;">
+                    @endif  
                 </div>
             </div>
         </div>

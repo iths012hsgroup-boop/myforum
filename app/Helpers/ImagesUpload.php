@@ -2,33 +2,47 @@
 
 namespace App\Helpers;
 
-use Storage;
-use Crud;
-use File;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ImagesUpload {
 
-    public static function upload($data, $location)
+    /**
+     * Upload dengan nama random
+     *
+     * @param  \Illuminate\Http\UploadedFile $data
+     * @param  string $location  contoh: 'gambar_topik/situs-a/'
+     * @param  string $disk      contoh: 'spaces' atau 'public'
+     * @return string            path di bucket, contoh: 'uploads/gambar_topik/situs-a/xxxxx.jpg'
+     */
+    public static function upload($data, $location, $disk = 'spaces')
     {
         $fileName = Str::random(20).'.'.$data->getClientOriginalExtension();
-        $path = 'uploads/'.$location.$fileName;
-        $process = Storage::disk('public')->put($path, file_get_contents($data),'public');
 
+        // rapikan location biar gak dobel slash
+        $location = trim($location, '/').'/';
+
+        // path yang akan disimpan di Spaces dan di DB
+        $path = '/'.$location.$fileName;
+
+        // SIMPAN ke DO Spaces (disk 'spaces')
+        Storage::disk($disk)->put($path, file_get_contents($data), 'public');
+
+        // return PATH, bukan URL
         return $path;
     }
 
-    public static function uploadOriginal($data, $location)
+    /**
+     * Upload pakai nama asli file
+     */
+    public static function uploadOriginal($data, $location, $disk = 'spaces')
     {
-        $fileName = $data->getClientOriginalName();
-        $path = 'uploads/'.$location.str_replace(':','-',$fileName);
-        if(Storage::disk('public')->exists($path)) {
-            $process = Storage::disk('public')->put($path, file_get_contents($data),'public');
+        $location = trim($location, '/').'/';
 
-        } else {
+        $fileName = str_replace(':','-',$data->getClientOriginalName());
+        $path = '/'.$location.$fileName;
 
-            $process = Storage::disk('public')->put($path, file_get_contents($data),'public');
-        }
+        Storage::disk($disk)->put($path, file_get_contents($data), 'public');
 
         return $path;
     }

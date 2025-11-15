@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Yajra\DataTables\Facades\DataTables;
+use Yajra\DataTables\Html\Builder;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\AbsensiReportExport;
 use App\Helpers\AuthLink;
@@ -143,7 +145,7 @@ class HrdManagementController extends Controller
      | INDEX & DATA STAFF
      * ----------------------------------------------------------------*/
 
-    public function index(Request $request)
+    public function index(Request $request, Builder $builder)
     {
         if ($resp = $this->ensureHrdAccess()) return $resp;
 
@@ -153,32 +155,113 @@ class HrdManagementController extends Controller
             ? $this->getActiveUsersBySite($idSitusArray, $isAllSite)
             : collect();
 
-        return view('pages.hrdmanagement.index', compact('namaSitusLogin', 'filteredUsers'));
+        // === INI BAGIAN BARU: definisi DataTable untuk staffTable ===
+        $html = $builder
+            ->setTableId('staffTable') // id <table> di HTML
+            ->columns([
+                [
+                    'data'       => 'DT_RowIndex',
+                    'name'       => null,
+                    'title'      => 'No.',
+                    'orderable'  => false,
+                    'searchable' => false,
+                    'class'      => 'text-center',
+                ],
+                [
+                    'data'  => 'id_admin',
+                    'name'  => 'id_admin',
+                    'title' => 'ID Admin',
+                ],
+                [
+                    'data'  => 'nama_staff',
+                    'name'  => 'nama_staff',
+                    'title' => 'Nama Staff',
+                ],
+                [
+                    'data'       => 'action',
+                    'name'       => 'action',
+                    'title'      => 'Action',
+                    'orderable'  => false,
+                    'searchable' => false,
+                    'class'      => 'text-center',
+                ],
+            ])
+            ->minifiedAjax(route('hrdmanagement.staff.data')) // route JSON
+            ->parameters([
+                'processing'  => true,
+                'serverSide'  => true,
+                'responsive'  => true,
+                'lengthChange'=> true,
+                'searching'   => true,
+                'ordering'    => true,
+                'info'        => true,
+                'autoWidth'   => false,
+                'language'    => [
+                    'lengthMenu'   => 'Tampilkan _MENU_ data per halaman',
+                    'zeroRecords'  => 'Tidak ada data yang ditemukan',
+                    'info'         => 'Menampilkan halaman _PAGE_ dari _PAGES_',
+                    'infoEmpty'    => 'Tidak ada data',
+                    'infoFiltered' => '(difilter dari total _MAX_ data)',
+                    'search'       => 'Cari:',
+                    'paginate'     => [
+                        'first'    => 'Awal',
+                        'last'     => 'Akhir',
+                        'next'     => 'Berikutnya',
+                        'previous' => 'Sebelumnya',
+                    ],
+                ],
+            ]);
+
+        return view('pages.hrdmanagement.index', compact('namaSitusLogin', 'filteredUsers', 'html'));
     }
+
 
     public function staffData()
     {
         [, $idSitusArray, $isAllSite, $userLogin] = $this->resolveUserSiteScope();
 
-        $rows = [];
-        if ($userLogin && !empty($idSitusArray)) {
-            foreach ($this->getActiveUsersBySite($idSitusArray, $isAllSite) as $user) {
-                $idSitusPertama = null;
-                if (!empty($user->id_situs)) {
-                    $parts          = explode(',', $user->id_situs);
-                    $idSitusPertama = trim($parts[0]);
-                }
+        $users = ($userLogin && !empty($idSitusArray))
+            ? $this->getActiveUsersBySite($idSitusArray, $isAllSite)
+            : collect();
 
-                $rows[] = [
-                    'id_admin'       => $user->id_admin,
-                    'nama_staff'     => $user->nama_staff,
-                    'id_situs_first' => $idSitusPertama,
-                    'id_situs'       => $user->id_situs,
-                ];
-            }
-        }
+        return DataTables::of($users)
+            ->addIndexColumn()
+            ->addColumn('action', function ($row) {
+                $idSitusAll = $row->id_situs;
 
-        return response()->json(['data' => $rows]);
+                return '
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button"
+                            class="btn btn-primary btn-sm absensi-baru-btn"
+                            data-id-admin="'.$row->id_admin.'"
+                            data-nama-staff="'.$row->nama_staff.'"
+                            data-id-situs-user="'.$idSitusAll.'"
+                            title="Absensi Baru Hari Ini">
+                            <i class="fas fa-plus"></i> Absensi
+                        </button>
+
+                        <button type="button"
+                            class="btn btn-warning btn-sm edit-absensi-btn"
+                            data-id-admin="'.$row->id_admin.'"
+                            data-nama-staff="'.$row->nama_staff.'"
+                            data-id-situs-user="'.$idSitusAll.'"
+                            title="Edit Absensi Hari Ini">
+                            <i class="fas fa-pencil-alt"></i> Edit
+                        </button>
+
+                        <button type="button"
+                            class="btn btn-info btn-sm detail-absensi-btn"
+                            data-id-admin="'.$row->id_admin.'"
+                            data-nama-staff="'.$row->nama_staff.'"
+                            data-id-situs-user="'.$idSitusAll.'"
+                            title="Lihat Riwayat Absensi">
+                            <i class="fas fa-list"></i> Details
+                        </button>
+                    </div>
+                ';
+            })
+            ->rawColumns(['action'])
+            ->make(true);
     }
 
     /* -----------------------------------------------------------------

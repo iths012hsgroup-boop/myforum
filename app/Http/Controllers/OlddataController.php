@@ -10,6 +10,7 @@ use App\Models\Forumauditpost;
 use Yajra\DataTables\DataTables;
 use Yajra\DataTables\Html\Builder;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 
 class OlddataController extends Controller
@@ -76,8 +77,29 @@ class OlddataController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        // sudah full URL (CDN / domain lain)
+                        $url = $raw;
+                    } else {
+                        try {
+                            // pakai disk CDN (misal: spaces)
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -201,8 +223,29 @@ class OlddataController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        // sudah full URL (CDN / domain lain)
+                        $url = $raw;
+                    } else {
+                        try {
+                            // pakai disk CDN (misal: spaces)
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -326,8 +369,29 @@ class OlddataController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        // sudah full URL (CDN / domain lain)
+                        $url = $raw;
+                    } else {
+                        try {
+                            // pakai disk CDN (misal: spaces)
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -451,8 +515,29 @@ class OlddataController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('link_gambar', function ($model) {
+                    $raw = ltrim((string) $model->link_gambar, '/');
+
+                    if ($raw === '') {
+                        return '<span class="text-muted">Tidak ada</span>';
+                    }
+
+                    if (Str::startsWith($raw, ['http://', 'https://'])) {
+                        // sudah full URL (CDN / domain lain)
+                        $url = $raw;
+                    } else {
+                        try {
+                            // pakai disk CDN (misal: spaces)
+                            $url = Storage::disk('spaces')->url($raw);
+                        } catch (\Throwable $e) {
+                            // fallback ke storage default Laravel
+                            $url = Storage::url($raw);
+                        }
+                    }
+
                     return '
-                        <img src="' .Storage::url($model->link_gambar). '" class="img-responsive" style="width : 200px"/>
+                        <img src="'.$url.'"
+                            class="img-responsive"
+                            style="width:200px; max-height:120px; object-fit:cover"/>
                     ';
                 })
                 ->addColumn('created_at', function ($row){
@@ -558,20 +643,117 @@ class OlddataController extends Controller
         /**
      * Show the details.
      */
-    public function olddatadetails($slug, Request $request)
+public function olddatadetails($slug, Request $request)
+{
+    $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
+    if ((int) data_get($akses, '0.nilai', 0) === 0) {
+        return view('error');
+    }
+
+    $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
+
+    $datadetailforumauditpost = Forumauditpost::where('slug', $datadetailforumaudit->slug)
+        ->where('parent_forum_id', $datadetailforumaudit->id)
+        ->where('parent_case_id', $datadetailforumaudit->case_id)
+        ->orderBy('id', 'ASC')
+        ->get();
+
+    // === URL gambar: bisa handle full URL / storage lokal / CDN ===
+    $imageUrl = '';
+    $raw = ltrim((string) ($datadetailforumaudit->link_gambar ?? ''), '/');
+
+    if ($raw !== '') {
+        if (Str::startsWith($raw, ['http://', 'https://'])) {
+            // sudah full URL (CDN / external)
+            $imageUrl = $raw;
+        } elseif (Str::startsWith($raw, 'storage/')) {
+            // path lama: storage/...
+            $imageUrl = '/' . $raw;
+        } else {
+            // path file di disk (Spaces / local)
+            $raw = preg_replace('#^public/#', '', $raw);
+
+            try {
+                // kalau pakai CDN (mis: disk 'spaces')
+                $imageUrl = Storage::disk('spaces')->url($raw);
+            } catch (\Throwable $e) {
+                // fallback ke storage lokal
+                $imageUrl = Storage::url($raw); // /storage/...
+            }
+        }
+    }
+
+    return view('pages.formauditor.olddatadetails')->with([
+        'datadetailforumaudit'     => $datadetailforumaudit,
+        'datadetailforumauditpost' => $datadetailforumauditpost,
+        'imageUrl'                 => $imageUrl,
+    ]);
+}
+
+        /**
+     * Show the details.
+     */
+public function auditorpostdetailsreport($slug, Request $request)
+{
+    $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
+    if ((int) data_get($akses, '0.nilai', 0) === 0) {
+        return view('error');
+    }
+
+    $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
+
+    $datadetailforumauditpost = Forumauditpost::where('slug', $datadetailforumaudit->slug)
+        ->where('parent_forum_id', $datadetailforumaudit->id)
+        ->where('parent_case_id', $datadetailforumaudit->case_id)
+        ->orderBy('id', 'ASC')
+        ->get();
+
+    // === URL gambar sama seperti di atas ===
+    $imageUrl = '';
+    $raw = ltrim((string) ($datadetailforumaudit->link_gambar ?? ''), '/');
+
+    if ($raw !== '') {
+        if (Str::startsWith($raw, ['http://', 'https://'])) {
+            $imageUrl = $raw;
+        } elseif (Str::startsWith($raw, 'storage/')) {
+            $imageUrl = '/' . $raw;
+        } else {
+            $raw = preg_replace('#^public/#', '', $raw);
+            try {
+                $imageUrl = Storage::disk('spaces')->url($raw);
+            } catch (\Throwable $e) {
+                $imageUrl = Storage::url($raw);
+            }
+        }
+    }
+
+    return view('pages.reporting.auditorpostdetailsreport')->with([
+        'datadetailforumaudit'     => $datadetailforumaudit,
+        'datadetailforumauditpost' => $datadetailforumauditpost,
+        'imageUrl'                 => $imageUrl,
+    ]);
+}
+
+    public function recovery($slug)
     {
-        $akses = AuthLink::access_url(auth()->user()->id_admin, $request->segment(1));
-        if ($akses[0]->nilai == 0) {
-            return view('error');
+        // Cari entitas berdasarkan slug
+        $forum = Forumaudit::where('slug', $slug)->Where('status_case', 4)->first();
+        $user = auth()->user()->id_admin;
+
+        // Jika data tidak ditemukan
+        if (!$forum) {
+            return redirect()->back()->with('error', 'Data tidak ditemukan!');
         }
 
-        $datadetailforumaudit = Forumaudit::where('slug', $slug)->firstOrFail();
-        $datadetailforumauditpost = Forumauditpost::where('slug',$datadetailforumaudit->slug)->where('parent_forum_id',$datadetailforumaudit->id)->where('parent_case_id',$datadetailforumaudit->case_id)->orderBy('id','ASC')->get();
+        try {
+            // Update kolom status_case menjadi 3
+            $forum->update(['status_case' => 2, 'status_kesalahan' => 0, 'recovery_by' => $user]);
 
-        return view('pages.formauditor.olddatadetails')->with([
-            "datadetailforumaudit" => $datadetailforumaudit,
-            "datadetailforumauditpost" => $datadetailforumauditpost,
-        ]);
+            return redirect()->back()->with('success', 'Data berhasil direcovery!');
+        } catch (\Exception $e) {
+            // Tangani error selama proses update
+            return redirect()->back()->with('error', 'Terjadi kesalahan saat melakukan recovery.');
+        }
     }
 
 }

@@ -169,7 +169,7 @@
                                         </select>
                                     </div>
                                 </div>
-                            </div> {{-- /.row --}}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -182,7 +182,7 @@
 
     {{-- Modal Preview Gambar --}}
     <div class="modal fade" id="imagemodal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
-        <div class="modal-dialog" style="max-width: 1920px!important;">
+        <div class="modal-dialog" style="max-width: 1500px!important;">
             <div class="modal-content">
                 <div class="modal-body">
                     <button type="button" class="close" data-dismiss="modal">
