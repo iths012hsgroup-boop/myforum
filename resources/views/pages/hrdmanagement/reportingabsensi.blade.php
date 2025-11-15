@@ -38,11 +38,14 @@
                     value="{{ date('Y') }}"
                 >
 
-                <select id="gen_periode_ke" class="form-control form-control-sm mr-2">
-                    <option value="">Semua Periode</option>
-                    <option value="1">Periode 1 (Jan–Jun)</option>
-                    <option value="2">Periode 2 (Jul–Des)</option>
-                </select>
+<select id="gen_periode_ke" class="form-control form-control-sm mr-2">
+    <option value="">Semua Periode</option>
+    @foreach ($periodes as $p)
+        <option value="{{ $p->periode }}">
+            Periode {{ $p->periode }} ({{ $p->bulan_dari }}–{{ $p->bulan_ke }})
+        </option>
+    @endforeach
+</select>
 
                 {{-- PILIH SITUS --}}
                 <select id="gen_situs" class="form-control form-control-sm mr-2">
@@ -273,9 +276,9 @@ $(function () {
             url.searchParams.set('id_situs', situsVal);
         }
 
-        const keteranganPeriode = periodeKe
-            ? (periodeKe === '1' ? 'Periode 1 (Jan–Jun)' : 'Periode 2 (Jul–Des)')
-            : 'Semua Periode';
+const keteranganPeriode = periodeKe
+    ? (`Periode ${periodeKe} (${(window.PERIODE_LABELS || {})[periodeKe] || '-'})`)
+    : 'Semua Periode';
 
         const keteranganSitus = situsVal
             ? $('#gen_situs option:selected').text()
@@ -299,6 +302,16 @@ $(function () {
         });
     });
 });
+
+
+    // Map periode -> "bulan_dari–bulan_ke"
+    window.PERIODE_LABELS = @json(
+        $periodes->mapWithKeys(function ($p) {
+            return [
+                (string) $p->periode => $p->bulan_dari . '–' . $p->bulan_ke,
+            ];
+        })
+    );
 </script>
 @endpush
 

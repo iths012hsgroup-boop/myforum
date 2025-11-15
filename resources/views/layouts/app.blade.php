@@ -68,7 +68,7 @@
             <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button">
                     <i class="fas fa-user-circle mr-1"></i>
-                    {{ Auth::user()->nama_staff ?? Auth::user()->id_admin }}
+                    {{ Auth::user()->id_admin ?? Auth::user()->id_admin }}
                 </a>
                 <div class="dropdown-menu dropdown-menu-right">
 

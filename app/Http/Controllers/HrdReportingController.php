@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\AbsensiReportExport;
+use App\Models\SettingPeriode;
 use App\Helpers\AuthLink;
 use App\Models\Daftarsitus;
 use App\Models\AbsensiReport;
@@ -39,33 +40,59 @@ class HrdReportingController extends Controller
     }
 
     /** Parse "YYYY-1|2" -> [ok, tahun, periodeKe, start, end] */
-    private function parsePeriodeString(string $periode): array
-    {
-        $parts = explode('-', $periode);
-        if (count($parts) !== 2) return [false, 0, 0, null, null];
+private function parsePeriodeString(string $periode): array
+{
+    $parts = explode('-', $periode);
+    if (count($parts) !== 2) {
+        return [false, 0, 0, null, null];
+    }
 
-        $tahun     = (int) $parts[0];
-        $periodeKe = (int) $parts[1];
+    $tahun     = (int) $parts[0];
+    $periodeKe = (int) $parts[1];
 
-        if ($periodeKe === 1) {
-            return [true, $tahun, 1, Carbon::create($tahun, 1, 1)->toDateString(), Carbon::create($tahun, 6, 30)->toDateString()];
-        }
-        if ($periodeKe === 2) {
-            return [true, $tahun, 2, Carbon::create($tahun, 7, 1)->toDateString(), Carbon::create($tahun, 12, 31)->toDateString()];
-        }
+    $setting = SettingPeriode::where('tahun', $tahun)
+        ->where('periode', $periodeKe)
+        ->first();
+
+    if (!$setting) {
+        // periode tidak terdaftar
         return [false, $tahun, $periodeKe, null, null];
     }
+
+    try {
+        if (is_numeric($setting->bulan_dari) && is_numeric($setting->bulan_ke)) {
+            // CASE: data bulan berupa angka 1–12
+            $start = Carbon::create($tahun, (int) $setting->bulan_dari, 1)
+                ->startOfMonth()->toDateString();
+            $end   = Carbon::create($tahun, (int) $setting->bulan_ke, 1)
+                ->endOfMonth()->toDateString();
+        } else {
+            // CASE: data bulan berupa teks, mis: "Jan", "Januari", dsb.
+            $start = Carbon::parse($setting->bulan_dari . ' ' . $tahun)
+                ->startOfMonth()->toDateString();
+            $end   = Carbon::parse($setting->bulan_ke . ' ' . $tahun)
+                ->endOfMonth()->toDateString();
+        }
+    } catch (\Throwable $e) {
+        // kalau parsing bulan gagal, anggap periode tidak valid
+        return [false, $tahun, $periodeKe, null, null];
+    }
+
+    return [true, $tahun, $periodeKe, $start, $end];
+}
 
     /* ------------------------- Pages & APIs ------------------------------- */
 
     // GET /hrdmanagement/report-absensi
-    public function reportingAbsensi()
-    {
-        if ($resp = $this->ensureHrdAccess()) return $resp;
+public function reportingAbsensi()
+{
+    if ($resp = $this->ensureHrdAccess()) return $resp;
 
-        $sites = Daftarsitus::select('id', 'nama_situs')->orderBy('nama_situs')->get();
-        return view('pages.hrdmanagement.reportingabsensi', compact('sites'));
-    }
+    $sites    = Daftarsitus::select('id', 'nama_situs')->orderBy('nama_situs')->get();
+    $periodes = SettingPeriode::orderBy('tahun')->orderBy('periode')->get();
+
+    return view('pages.hrdmanagement.reportingabsensi', compact('sites', 'periodes'));
+}
 
     // GET /hrdmanagement/report-absensi/data
     public function getReportingAbsensiData(Request $request)
