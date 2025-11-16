@@ -84,13 +84,13 @@
   ),
   'spatie/laravel-html' => 
   array (
-    'providers' => 
-    array (
-      0 => 'Spatie\\Html\\HtmlServiceProvider',
-    ),
     'aliases' => 
     array (
       'Html' => 'Spatie\\Html\\Facades\\Html',
+    ),
+    'providers' => 
+    array (
+      0 => 'Spatie\\Html\\HtmlServiceProvider',
     ),
   ),
   'spatie/laravel-ignition' => 
