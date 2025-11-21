@@ -22,7 +22,7 @@
       <div>
         <h3 class="card-title mb-0">Data Cases — {{ $topic }}</h3>
         <div class="small text-muted mt-1">
-          Periode: <code>{{ $periodeAktif }}</code> • Scope status: <em>{{ $statusLabel }}</em>
+          <p>Status Topik : {{ $statusLabel }}</p>
         </div>
       </div>
       <a href="{{ route('dashboard.index', ['tab' => 'topik_title']) }}" class="btn btn-light ml-auto">← Kembali</a>
@@ -32,7 +32,7 @@
       <table id="topicFullTable" class="table table-striped table-bordered w-100">
         <thead>
         <tr>
-          <th style="width:60px">#</th>
+          <th style="width:60px">No</th>
           <th style="width:120px">Topik ID</th>
           <th>Topik</th>
           <th style="width:220px">Dibuat Untuk</th>
